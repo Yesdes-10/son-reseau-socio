@@ -193,54 +193,82 @@ button, label {
 }
 
 /* --- ADAPTATION POUR MOBILE (SMARTPHONES) --- */
+/* --- RÉORGANISATION MOBILE "PRO" (Écrans < 768px) --- */
 @media (max-width: 768px) {
-    .layout-container { 
-        flex-direction: column; 
+    /* 1. On réorganise la page en colonne et on laisse de la place en bas */
+    .layout-container {
+        flex-direction: column;
+        padding-bottom: 70px; /* Espace pour la barre de navigation du bas */
     }
-    
-    .sidebar { 
-        width: 100%; 
-        height: auto; 
-        position: static; 
-        border-right: none; 
-        border-bottom: 1px solid var(--border-color); 
-        padding: 15px; 
+
+    /* 2. Le menu latéral devient une barre d'application en bas */
+    .sidebar {
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        width: 100%;
+        height: 60px;
+        background-color: #ffffff;
+        border-top: 1px solid var(--border-color);
+        border-right: none;
+        padding: 0;
+        display: flex;
+        justify-content: center;
+        z-index: 1000;
+        box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.05);
     }
-    
-    .menu { 
-        flex-direction: row; 
-        flex-wrap: wrap; 
-        justify-content: center; 
-        gap: 15px;
+
+    .menu {
+        display: flex;
+        flex-direction: row;
+        width: 100%;
+        justify-content: space-around; /* Aligne les boutons avec le même espace */
+        align-items: center;
+        padding: 0;
+        margin: 0;
     }
-    
+
     .menu-item {
-        padding: 8px 12px;
-        font-size: 13px;
+        flex: 1;
+        text-align: center;
+        padding: 10px 5px;
+        font-size: 12px;
+        border-radius: 0; /* Enlève les arrondis pour l'effet barre du bas */
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 5px; /* Sépare l'icône du texte si tu en as */
     }
-    
-    .content-area { 
-        padding: 15px; 
-        width: 100%; 
-        box-sizing: border-box; 
+
+    /* 3. La zone des posts s'adapte aux bords de l'écran */
+    .content-area {
+        width: 100%;
+        padding: 10px;
+        margin: 0;
+        box-sizing: border-box;
     }
-    
-    .messages-layout { 
-        flex-direction: column; 
-        height: 70vh; 
+
+    .post {
+        border-radius: 12px; /* Bords plus doux sur mobile */
+        padding: 15px;
+        margin-bottom: 15px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1); /* Léger ombrage */
     }
-    
-    .contacts-sidebar { 
-        width: 100%; 
-        border-right: none; 
-        border-bottom: 1px solid var(--border-color); 
-        height: 120px; 
-        overflow-y: auto;
+
+    /* 4. Les images prennent 100% de l'espace disponible */
+    .post-image, .post-video {
+        width: 100%;
+        height: auto;
+        border-radius: 8px;
+        margin-top: 10px;
     }
-    
-    #auth-screen { 
-        margin: 20px auto; 
-        width: 90%; 
-        padding: 20px; 
+
+    /* 5. Optimisation de l'écran de connexion */
+    #auth-screen {
+        width: 95%;
+        margin: 20px auto;
+        padding: 25px 15px;
+        box-shadow: none; /* Plus épuré sur mobile */
+        border: 1px solid var(--border-color);
     }
 }
