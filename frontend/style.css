@@ -191,3 +191,56 @@ button, label {
     70% { transform: scale(1.2); }
     100% { transform: scale(1); }
 }
+
+/* --- ADAPTATION POUR MOBILE (SMARTPHONES) --- */
+@media (max-width: 768px) {
+    .layout-container { 
+        flex-direction: column; 
+    }
+    
+    .sidebar { 
+        width: 100%; 
+        height: auto; 
+        position: static; 
+        border-right: none; 
+        border-bottom: 1px solid var(--border-color); 
+        padding: 15px; 
+    }
+    
+    .menu { 
+        flex-direction: row; 
+        flex-wrap: wrap; 
+        justify-content: center; 
+        gap: 15px;
+    }
+    
+    .menu-item {
+        padding: 8px 12px;
+        font-size: 13px;
+    }
+    
+    .content-area { 
+        padding: 15px; 
+        width: 100%; 
+        box-sizing: border-box; 
+    }
+    
+    .messages-layout { 
+        flex-direction: column; 
+        height: 70vh; 
+    }
+    
+    .contacts-sidebar { 
+        width: 100%; 
+        border-right: none; 
+        border-bottom: 1px solid var(--border-color); 
+        height: 120px; 
+        overflow-y: auto;
+    }
+    
+    #auth-screen { 
+        margin: 20px auto; 
+        width: 90%; 
+        padding: 20px; 
+    }
+}
