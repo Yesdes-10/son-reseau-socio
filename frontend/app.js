@@ -181,26 +181,40 @@ function afficherEcranPrincipal() {
 }
 
 function naviguerVers(section, targetId = null) {
+    // Retirer 'active' des menus Bureau
     document.querySelectorAll('.menu-item').forEach(el => el.classList.remove('active'));
+    // Retirer 'active' des menus Mobile
+    document.querySelectorAll('.mobile-nav-item').forEach(el => el.classList.remove('active'));
+    
     document.getElementById('feed-section').style.display = "none";
     document.getElementById('profile-section').style.display = "none";
     document.getElementById('messages-section').style.display = "none";
     document.getElementById('notifications-section').style.display = "none";
 
+    // Si on navigue vers la messagerie, on s'assure d'afficher la liste des contacts sur mobile
+    if (section === 'messages') {
+        document.getElementById('mobile-messages-layout').classList.remove('chat-active');
+        chatActifUserId = null;
+    }
+
     if (section === 'feed') {
         document.getElementById('nav-feed').classList.add('active');
+        document.getElementById('mob-nav-feed').classList.add('active');
         document.getElementById('feed-section').style.display = "block";
         chargerFeed();
     } else if (section === 'profil') {
         document.getElementById('nav-profil').classList.add('active');
+        document.getElementById('mob-nav-profil').classList.add('active');
         document.getElementById('profile-section').style.display = "block";
         chargerProfil(targetId);
     } else if (section === 'messages') {
         document.getElementById('nav-messages').classList.add('active');
+        document.getElementById('mob-nav-messages').classList.add('active');
         document.getElementById('messages-section').style.display = "block";
         chargerMessagerie(targetId);
     } else if (section === 'notifications') {
         document.getElementById('nav-notifications').classList.add('active');
+        document.getElementById('mob-nav-notifications').classList.add('active');
         document.getElementById('notifications-section').style.display = "block";
         chargerNotifications();
     }
@@ -248,11 +262,16 @@ async function actualiserBadgeNotifications(silencieux = false) {
         if (res.ok) {
             const notifs = await res.json();
             const nonLues = notifs.filter(n => !n.read);
+            
+            // Cible les 2 badges (Bureau et Mobile)
             const badge = document.getElementById("notif-badge");
+            const badgeMob = document.getElementById("mob-notif-badge");
             
             if (nonLues.length > 0) {
                 badge.innerText = nonLues.length;
+                badgeMob.innerText = nonLues.length;
                 badge.style.display = "inline-block";
+                badgeMob.style.display = "inline-block";
                 
                 if (!silencieux && notifs.length > 0) {
                     const derniereAlerte = notifs[0];
@@ -263,12 +282,15 @@ async function actualiserBadgeNotifications(silencieux = false) {
                         afficherToast(`🔔 @${derniereAlerte.fromPseudo} a ${actionText} votre publication !`);
                         
                         badge.classList.remove("badge-bounce");
+                        badgeMob.classList.remove("badge-bounce");
                         void badge.offsetWidth;
                         badge.classList.add("badge-bounce");
+                        badgeMob.classList.add("badge-bounce");
                     }
                 }
             } else { 
                 badge.style.display = "none"; 
+                badgeMob.style.display = "none"; 
             }
 
             if (notifs.length > 0) {
@@ -302,10 +324,11 @@ async function chargerNotifications() {
         
         await fetch(`${API_URL}/notifications/read`, { method: "POST", headers: { "Authorization": `Bearer ${token}` } });
         document.getElementById("notif-badge").style.display = "none";
+        document.getElementById("mob-notif-badge").style.display = "none";
     }
 }
 
-// --- MESSAGERIE PRIVÉE ---
+// --- MESSAGERIE PRIVÉE ET ADAPTATION MOBILE ---
 async function chargerMessagerie(forceUserChatId = null) {
     const token = localStorage.getItem("social_token");
     const res = await fetch(`${API_URL}/messages/contacts`, { headers: { "Authorization": `Bearer ${token}` } });
@@ -342,7 +365,7 @@ async function chargerDiscussion(userId, forcerScroll = true) {
         const elActif = document.getElementById(`contact-${userId}`);
         if (elActif) {
             elActif.classList.add('active');
-            document.getElementById("chat-header").innerText = `Discussion avec ${elActif.querySelector('span').innerText}`;
+            document.getElementById("chat-header-text").innerText = `Discussion avec ${elActif.querySelector('span').innerText}`;
         }
 
         container.innerHTML = "";
@@ -354,8 +377,18 @@ async function chargerDiscussion(userId, forcerScroll = true) {
         });
 
         document.getElementById("chat-input-block").style.display = "flex";
+        
+        // ADAPTATION MOBILE : Activer la vue du chat
+        document.getElementById("mobile-messages-layout").classList.add("chat-active");
+        
         if (forcerScroll) container.scrollTop = container.scrollHeight;
     }
+}
+
+// Fonction pour le bouton retour sur mobile
+function fermerChatMobile() {
+    chatActifUserId = null;
+    document.getElementById("mobile-messages-layout").classList.remove("chat-active");
 }
 
 async function envoyerMessage() {

@@ -1,4 +1,5 @@
-<!DOCTYPE html><html lang="fr">
+<!DOCTYPE html>
+<html lang="fr">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
@@ -23,7 +24,7 @@
         <div id="main-screen" style="display: none;">
             <div class="layout-container">
                 
-                <aside class="sidebar">
+                <aside class="sidebar desktop-only">
                     <div class="logo"><span style="color: #dfb142;">•</span> Jo Socio</div>
                     
                     <div class="current-user-widget" style="display: flex; align-items: center; gap: 10px; margin-bottom: 25px; padding: 10px; background: var(--panel-dark); border-radius: 8px;">
@@ -109,14 +110,21 @@
                     </div>
 
                     <div id="messages-section" style="display: none;">
-                        <h2 class="section-title">Messagerie Privée</h2>
-                        <div class="messages-layout">
-                            <div class="contacts-sidebar">
+                        <h2 class="section-title desktop-only">Messagerie Privée</h2>
+                        <div class="messages-layout" id="mobile-messages-layout">
+                            
+                            <div class="contacts-sidebar" id="contacts-sidebar">
                                 <h3>Membres</h3>
                                 <div id="contacts-container"></div>
                             </div>
-                            <div class="chat-window">
-                                <div id="chat-header">Sélectionnez un membre pour discuter</div>
+
+                            <div class="chat-window" id="chat-window">
+                                <div id="chat-header" style="display: flex; align-items: center; gap: 10px;">
+                                    <button id="back-to-contacts-btn" class="mobile-only" onclick="fermerChatMobile()" style="display: none; background: none; border: none; font-size: 20px; cursor: pointer; color: inherit;">
+                                        <i class="fa-solid fa-arrow-left"></i>
+                                    </button>
+                                    <span id="chat-header-text">Sélectionnez un membre pour discuter</span>
+                                </div>
                                 <div id="messages-history" class="messages-history"></div>
                                 <div id="chat-input-block" class="chat-input-area" style="display: none;">
                                     <input type="text" id="message-text" placeholder="Écrire votre message..." onkeydown="if(event.key === 'Enter') envoyerMessage()">
@@ -132,6 +140,26 @@
                     </div>
 
                 </main>
+
+                <nav class="bottom-mobile-nav mobile-only">
+                    <a href="#" onclick="naviguerVers('feed')" class="mobile-nav-item active" id="mob-nav-feed">
+                        <i class="fa-solid fa-house"></i>
+                    </a>
+                    <a href="#" onclick="naviguerVers('notifications')" class="mobile-nav-item" id="mob-nav-notifications" style="position: relative;">
+                        <i class="fa-solid fa-bell"></i>
+                        <span id="mob-notif-badge" style="display:none; position:absolute; top:5px; right:10px; background: #e54d42; color:white; padding:2px 5px; border-radius:10px; font-size:10px;">0</span>
+                    </a>
+                    <a href="#" onclick="naviguerVers('messages')" class="mobile-nav-item" id="mob-nav-messages">
+                        <i class="fa-solid fa-envelope"></i>
+                    </a>
+                    <a href="#" onclick="naviguerVers('profil')" class="mobile-nav-item" id="mob-nav-profil">
+                        <i class="fa-solid fa-user"></i>
+                    </a>
+                    <a href="#" onclick="deconnecter()" class="mobile-nav-item">
+                        <i class="fa-solid fa-right-from-bracket"></i>
+                    </a>
+                </nav>
+
             </div>
         </div>
         
