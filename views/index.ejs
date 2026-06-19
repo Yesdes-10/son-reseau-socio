@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>Fil d'actualité</title>
+    <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+    <nav class="navbar">
+        <h2>🌐 SocialDev</h2>
+        <span>Connecté en tant que : <strong><%= pseudoConnecte %></strong></span>
+        <a href="/logout" class="btn-logout">Se déconnecter</a>
+    </nav>
+
+    <div class="container">
+        <!-- Formulaire pour publier -->
+        <div class="box-publication">
+            <h3>Quoi de neuf aujourd'hui ?</h3>
+            <form action="/publier" method="POST">
+                <textarea name="message" placeholder="Partage quelque chose avec la communauté..." required></textarea>
+                <button type="submit">Publier</button>
+            </form>
+        </div>
+
+        <!-- Affichage des posts -->
+        <h2>Le Fil d'actualité</h2>
+        <div class="feed">
+            <% if (listePosts.length === 0) { %>
+                <p class="no-post">Aucune publication pour le moment. Soyez le premier !</p>
+            <% } %>
+
+            <% listePosts.forEach(function(post) { %>
+                <div class="post shadow">
+                    <div class="post-header">
+                        <strong>@<%= post.auteur %></strong>
+                    </div>
+                    <div class="post-body">
+                        <p><%= post.contenant || post.contenu %></p>
+                    </div>
+                    <div class="post-footer">
+                        <form action="/like/<%= post.id %>" method="POST">
+                            <button type="submit" class="btn-like">❤️ <%= post.likes %> Likes</button>
+                        </form>
+                    </div>
+                </div>
+            <% }); %>
+        </div>
+    </div>
+</body>
+</html>

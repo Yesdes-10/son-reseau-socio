@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">jo socio</string>
+    <string name="title_activity_main">jo socio</string>
+    <string name="package_name">com.jo.app</string>
+    <string name="custom_url_scheme">com.jo.app</string>
+</resources>

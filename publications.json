@@ -1,0 +1,42 @@
+[
+  {
+    "_id": "1781367208072",
+    "auteurId": "1781365753780",
+    "contenu": "salut\n",
+    "likes": [
+      "1781365753780",
+      "1781367278385"
+    ],
+    "commentaires": [
+      {
+        "id": "1781367445914",
+        "auteur": "LUCAS",
+        "texte": "SALUT DAV",
+        "dateCreation": "2026-06-13T16:17:25.915Z"
+      },
+      {
+        "id": "1781367488813",
+        "auteur": "DAV",
+        "texte": "SALUT LUCAS",
+        "dateCreation": "2026-06-13T16:18:08.813Z"
+      },
+      {
+        "id": "1781419575433",
+        "auteur": "LUCAS",
+        "texte": "comment tu vas"
+      }
+    ],
+    "date": "2026-06-13T16:13:28.072Z"
+  },
+  {
+    "_id": "1781423384334",
+    "auteurId": "1781367278385",
+    "contenu": "La solution viens toujours de ce qu'on pense",
+    "likes": [
+      "1781365753780",
+      "1781367278385"
+    ],
+    "commentaires": [],
+    "date": "2026-06-14T07:49:44.334Z"
+  }
+]

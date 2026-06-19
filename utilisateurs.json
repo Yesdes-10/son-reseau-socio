@@ -1,0 +1,86 @@
+[
+  {
+    "_id": "1781365753780",
+    "pseudo": "DAV",
+    "password": "101010",
+    "abonnements": [
+      "1781367278385"
+    ],
+    "notifications": [
+      {
+        "id": "1781720107952",
+        "type": "like",
+        "fromPseudo": "LUCAS",
+        "postId": "1781367208072",
+        "read": true,
+        "date": "2026-06-17T18:15:07.952Z"
+      },
+      {
+        "id": "1781534533361",
+        "type": "like",
+        "fromPseudo": "LUCAS",
+        "postId": "1781367208072",
+        "read": true,
+        "date": "2026-06-15T14:42:13.361Z"
+      },
+      {
+        "id": "1781419575436",
+        "type": "comment",
+        "fromPseudo": "LUCAS",
+        "postId": "1781367208072",
+        "read": true,
+        "date": "2026-06-14T06:46:15.436Z"
+      },
+      {
+        "id": "1781419509738",
+        "type": "like",
+        "fromPseudo": "LUCAS",
+        "postId": "1781367208072",
+        "read": true,
+        "date": "2026-06-14T06:45:09.739Z"
+      }
+    ]
+  },
+  {
+    "_id": "1781367278385",
+    "pseudo": "LUCAS",
+    "password": "101010",
+    "abonnements": [
+      "1781365753780"
+    ],
+    "notifications": [
+      {
+        "id": "1781536582106",
+        "type": "like",
+        "fromPseudo": "DAV",
+        "postId": "1781423384334",
+        "read": true,
+        "date": "2026-06-15T15:16:22.106Z"
+      },
+      {
+        "id": "1781534604297",
+        "type": "like",
+        "fromPseudo": "DAV",
+        "postId": "1781534578777",
+        "read": true,
+        "date": "2026-06-15T14:43:24.297Z"
+      }
+    ]
+  },
+  {
+    "_id": "1781548778515",
+    "pseudo": "LUCA",
+    "password": "$2b$10$5WMGTREWSKPXr1zpKrt0reZ70/1CrPjsvoi8.nOuG9PtxJG80/nz.",
+    "avatarUrl": null,
+    "abonnements": [],
+    "notifications": []
+  },
+  {
+    "_id": "1781600454701",
+    "pseudo": "LUCASE",
+    "password": "$2b$10$aeugR7jFNwIQFS34skVnDuJkliYVLVwnc5FT21y76tVzpbQ7NKLvm",
+    "avatarUrl": null,
+    "abonnements": [],
+    "notifications": []
+  }
+]

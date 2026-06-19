@@ -1,0 +1,156 @@
+<!DOCTYPE html><html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Jo Socio</title>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.1/cropper.min.css">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="app">
+        <div id="auth-screen">
+            <div class="logo-auth"><span style="color: #dfb142;">•</span> Jo Socio</div>
+            <h2>Bienvenue</h2>
+            <input type="text" id="pseudo" placeholder="Votre Pseudo">
+            <input type="password" id="password" placeholder="Votre Mot de passe">
+            <button class="btn-primary" onclick="connecter()">Se connecter</button>
+            <button class="btn-secondary" onclick="inscrire()">Créer un compte</button>
+            <p id="auth-message"></p>
+        </div>
+
+        <div id="main-screen" style="display: none;">
+            <div class="layout-container">
+                
+                <aside class="sidebar">
+                    <div class="logo"><span style="color: #dfb142;">•</span> Jo Socio</div>
+                    
+                    <div class="current-user-widget" style="display: flex; align-items: center; gap: 10px; margin-bottom: 25px; padding: 10px; background: var(--panel-dark); border-radius: 8px;">
+                        <img id="sidebar-avatar" src="https://via.placeholder.com/150" alt="Avatar" class="avatar-round-mini">
+                        <span id="sidebar-pseudo" style="font-weight: 600; font-size: 14px;">@Moi</span>
+                    </div>
+
+                    <nav class="menu">
+                        <a href="#" onclick="naviguerVers('feed')" class="menu-item active" id="nav-feed">
+                            <i class="fa-solid fa-house"></i> Accueil
+                        </a>
+                        <a href="#" onclick="naviguerVers('profil')" class="menu-item" id="nav-profil">
+                            <i class="fa-solid fa-user"></i> Mon Profil
+                        </a>
+                        <a href="#" onclick="naviguerVers('messages')" class="menu-item" id="nav-messages">
+                            <i class="fa-solid fa-envelope"></i> Messages
+                        </a>
+                        <a href="#" onclick="naviguerVers('notifications')" class="menu-item" id="nav-notifications">
+                            <i class="fa-solid fa-bell"></i> Notifications 
+                            <span id="notif-badge" style="display:none; background: #e54d42; color:white; padding:2px 6px; border-radius:10px; font-size:10px; margin-left: 5px;">0</span>
+                        </a>
+                        
+                        <div class="search-box">
+                            <i class="fa-solid fa-magnifying-glass"></i>
+                            <input type="text" id="search-username" placeholder="Chercher un ami...">
+                            <button onclick="rechercherUtilisateurs()" class="btn-icon"><i class="fa-solid fa-arrow-right"></i></button>
+                        </div>
+                        <div id="search-results"></div>
+                        
+                        <a href="#" onclick="deconnecter()" class="menu-item logout-btn">
+                            <i class="fa-solid fa-right-from-bracket"></i> Déconnexion
+                        </a>
+                    </nav>
+                </aside>
+
+                <main class="content-area">
+                    
+                    <div id="feed-section">
+                        <h2 class="section-title">Fil d'actualité</h2>
+                        <div class="create-post">
+                            <div class="post-input-wrapper">
+                                <img id="feed-creator-avatar" src="https://via.placeholder.com/150" alt="Avatar" class="avatar-round-mini">
+                                <textarea id="post-content" placeholder="Que voulez-vous partager ?"></textarea>
+                            </div>
+                            
+                            <div id="preview-container" style="display: none; position: relative; margin-bottom: 15px;">
+                                <img id="image-preview" src="" alt="Aperçu" style="display: none; max-width: 100%; max-height: 200px; border-radius: 8px;">
+                                <video id="video-preview" controls style="display: none; max-width: 100%; max-height: 200px; border-radius: 8px;"></video>
+                                <button onclick="annulerImage()" style="position: absolute; top: 10px; left: 10px; background: rgba(0,0,0,0.7); color: white; border-radius: 50%; width: 30px; height: 30px; padding:0; line-height:30px; border:none; cursor:pointer;">✕</button>
+                            </div>
+
+                            <div class="post-actions" style="display: flex; justify-content: space-between; align-items: center;">
+                                <label for="post-image" class="btn-secondary" style="padding: 8px 15px; font-size: 13px;">
+                                    <i class="fa-solid fa-photo-film"></i> Image / Vidéo
+                                </label>
+                                <input type="file" id="post-image" accept="image/*,video/*" style="display: none;" onchange="previsualiserImage(event)">
+                                
+                                <button class="btn-primary" onclick="publier()">Publier</button>
+                            </div>
+                        </div>
+                        <div class="divider"><span>PUBLICATIONS RÉCENTES</span></div>
+                        <div id="feed-container"></div>
+                    </div>
+
+                    <div id="profile-section" style="display: none;">
+                        <div class="profile-header">
+                            <div class="profile-avatar-container" style="position: relative; width: 110px; margin: 0 auto 20px;">
+                                <img id="profile-avatar-img" src="https://via.placeholder.com/150" alt="Avatar Profil" class="profile-avatar-large">
+                                <label id="change-avatar-label" for="avatar-file-input" class="avatar-edit-overlay" style="display:none;">
+                                    <i class="fa-solid fa-camera"></i>
+                                </label>
+                                <input type="file" id="avatar-file-input" accept="image/*" style="display:none;" onchange="ouvrirRecadrageAvatar(event)">
+                            </div>
+                            
+                            <h2 id="profile-pseudo">Chargement...</h2>
+                            <p id="profile-stats">Abonnements : 0</p>
+                            <div id="profile-action-container" style="margin-top: 15px;"></div>
+                            
+                            <div id="profile-settings-container"></div>
+                        </div>
+                        <div class="divider"><span>PUBLICATIONS</span></div>
+                        <div id="profile-posts-container"></div>
+                    </div>
+
+                    <div id="messages-section" style="display: none;">
+                        <h2 class="section-title">Messagerie Privée</h2>
+                        <div class="messages-layout">
+                            <div class="contacts-sidebar">
+                                <h3>Membres</h3>
+                                <div id="contacts-container"></div>
+                            </div>
+                            <div class="chat-window">
+                                <div id="chat-header">Sélectionnez un membre pour discuter</div>
+                                <div id="messages-history" class="messages-history"></div>
+                                <div id="chat-input-block" class="chat-input-area" style="display: none;">
+                                    <input type="text" id="message-text" placeholder="Écrire votre message..." onkeydown="if(event.key === 'Enter') envoyerMessage()">
+                                    <button class="btn-primary" onclick="envoyerMessage()"><i class="fa-solid fa-paper-plane"></i></button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="notifications-section" style="display: none;">
+                        <h2 class="section-title">Vos Notifications</h2>
+                        <div id="notifications-container"></div>
+                    </div>
+
+                </main>
+            </div>
+        </div>
+        
+        <div id="crop-modal" class="modal-overlay" style="display: none;">
+            <div class="modal-box">
+                <h3>Ajuster votre photo de profil</h3>
+                <div class="crop-container">
+                    <img id="image-to-crop" src="" alt="A recadrer">
+                </div>
+                <div class="modal-actions">
+                    <button class="btn-secondary" onclick="fermerModaleRecadrage()">Annuler</button>
+                    <button class="btn-primary" onclick="sauvegarderAvatarRecadre()">Valider & Enregistrer</button>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.1/cropper.min.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>
