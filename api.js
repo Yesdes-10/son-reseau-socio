@@ -236,13 +236,44 @@ app.get('/messages/contacts', verifierToken, (req, res) => {
     res.json(contacts);
 });
 
-app.get('/messages/:userId', verifierToken, (req, res) => {
+app.get('/messages/contacts', verifierToken, (req, res) => {
+    const utilisateurs = lireDB(fileUsers);
     const messages = lireDB(fileMessages);
-    const cibleId = req.params.userId;
-    const discussion = messages.filter(m =>
-        (m.fromId === req.userId && m.toId === cibleId) || (m.fromId === cibleId && m.toId === req.userId)
-    ).sort((a, b) => new Date(a.date) - new Date(b.date));
-    res.json(discussion);
+    const moiId = req.userId;
+
+    let contactsMap = {};
+
+    // 1. Initialiser tous les utilisateurs (sauf nous-même)
+    utilisateurs.forEach(u => {
+        if (u._id !== moiId) {
+            contactsMap[u._id] = {
+                _id: u._id,
+                pseudo: u.pseudo,
+                avatarUrl: u.avatarUrl,
+                dernierMessage: null,
+                dateDernierMessage: 0 // 0 = très vieux par défaut
+            };
+        }
+    });
+
+    // 2. Trouver le tout dernier message de chaque conversation
+    messages.forEach(m => {
+        if (m.fromId === moiId || m.toId === moiId) {
+            const interlocuteurId = m.fromId === moiId ? m.toId : m.fromId;
+            if (contactsMap[interlocuteurId]) {
+                const timestampMsg = new Date(m.date).getTime();
+                if (timestampMsg > contactsMap[interlocuteurId].dateDernierMessage) {
+                    contactsMap[interlocuteurId].dernierMessage = m.texte;
+                    contactsMap[interlocuteurId].dateDernierMessage = timestampMsg;
+                }
+            }
+        }
+    });
+
+    // 3. Trier : les conversations actives en premier, du plus récent au plus ancien
+    const contactsTries = Object.values(contactsMap).sort((a, b) => b.dateDernierMessage - a.dateDernierMessage);
+
+    res.json(contactsTries);
 });
 
 app.post('/messages/:userId', verifierToken, (req, res) => {

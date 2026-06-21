@@ -256,3 +256,58 @@ button, label {
         padding: 10px 15px;
     }
 }
+/* --- FINITIONS MESSAGERIE EXCELLENCE --- */
+
+.contact-item {
+    padding: 12px 10px !important;
+}
+
+.contact-item-meta {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    width: 100%;
+}
+
+.contact-pseudo {
+    font-weight: 600;
+    font-size: 13.5px;
+    color: #ffffff;
+}
+
+.contact-snippet {
+    font-size: 11.5px;
+    color: var(--text-muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin-top: 2px;
+}
+
+.snippet-vide {
+    font-style: italic;
+    opacity: 0.5;
+}
+
+/* Bulle de chat redessinée avec l'heure intégrée */
+.message-bubble {
+    position: relative;
+    padding: 10px 14px 20px 14px !important; /* On dégage un bas de bulle pour l'heure */
+    min-width: 70px;
+}
+
+.msg-timestamp {
+    position: absolute;
+    bottom: 4px;
+    right: 8px;
+    font-size: 9px;
+    opacity: 0.65;
+}
+
+.message-bubble.sent .msg-timestamp {
+    color: #000000; /* Heure noire sur bulle dorée */
+}
+
+.message-bubble.received .msg-timestamp {
+    color: var(--text-muted);
+}
