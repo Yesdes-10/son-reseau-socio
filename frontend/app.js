@@ -1,12 +1,9 @@
-// Remplace const API_URL = "http://localhost:3000"; par :
 const API_URL = window.location.origin;
 const PAR_DEFAUT_AVATAR = "https://www.w3schools.com/howto/img_avatar.png";
 let fichierImageSelectionne = null; 
 let chatActifUserId = null; 
 let cropperInstance = null;
 let dernierIdNotification = null;
-let intervalleDiscussionLive = null;
-let memoireNombreMessages = 0;
 
 // --- UTILITAIRES UX ---
 function formaterDateRelative(dateISO) {
@@ -184,9 +181,6 @@ function afficherEcranPrincipal() {
 
 function naviguerVers(section, targetId = null) {
     // Retirer 'active' des menus Bureau
-    if (section !== 'messages' && intervalleDiscussionLive) {
-    clearInterval(intervalleDiscussionLive);
-}
     document.querySelectorAll('.menu-item').forEach(el => el.classList.remove('active'));
     // Retirer 'active' des menus Mobile
     document.querySelectorAll('.mobile-nav-item').forEach(el => el.classList.remove('active'));
@@ -333,12 +327,10 @@ async function chargerNotifications() {
     }
 }
 
-// --- MESSAGERIE PRIVÉE (VERSION EXCELLENCE) ---
-
+// --- MESSAGERIE PRIVÉE ET ADAPTATION MOBILE ---
 async function chargerMessagerie(forceUserChatId = null) {
     const token = localStorage.getItem("social_token");
     const res = await fetch(`${API_URL}/messages/contacts`, { headers: { "Authorization": `Bearer ${token}` } });
-    
     if (res.ok) {
         const contacts = await res.json();
         const container = document.getElementById("contacts-container");
@@ -346,111 +338,16 @@ async function chargerMessagerie(forceUserChatId = null) {
 
         contacts.forEach(c => {
             const avatarContact = c.avatarUrl ? `${API_URL}${c.avatarUrl}` : PAR_DEFAUT_AVATAR;
-            
-            // Formatage propre du mini-extrait du message
-            let snippet = "<span class='snippet-vide'>Nouvelle discussion</span>";
-            if (c.dernierMessage) {
-                const texteRaccourci = c.dernierMessage.length > 24 ? c.dernierMessage.substring(0, 24) + "..." : c.dernierMessage;
-                snippet = texteRaccourci;
-            }
-
             const div = document.createElement("div");
             div.className = "contact-item";
             div.id = `contact-${c._id}`;
-            div.innerHTML = `
-                <img src="${avatarContact}" class="avatar-round-mini" style="width:40px; height:40px; flex-shrink:0;"> 
-                <div class="contact-item-meta">
-                    <span class="contact-pseudo">@${c.pseudo}</span>
-                    <span class="contact-snippet">${snippet}</span>
-                </div>
-            `;
+            div.innerHTML = `<img src="${avatarContact}" class="avatar-round-mini" style="width:30px; height:30px;"> <span>@${c.pseudo}</span>`;
             div.onclick = () => chargerDiscussion(c._id, true);
             container.appendChild(div);
         });
 
-        // Re-sélectionner le contact actif visuellement
-        if (chatActifUserId) {
-            const el = document.getElementById(`contact-${chatActifUserId}`);
-            if (el) el.classList.add('active');
-        }
-
         if (forceUserChatId) chargerDiscussion(forceUserChatId, true);
-    }
-}
-
-async function chargerDiscussion(userId, forcerScroll = false) {
-    chatActifUserId = userId;
-    const token = localStorage.getItem("social_token");
-    const res = await fetch(`${API_URL}/messages/${userId}`, { headers: { "Authorization": `Bearer ${token}` } });
-    
-    if (res.ok) {
-        const msgs = await res.json();
-        const container = document.getElementById("messages-history");
-        
-        document.querySelectorAll('.contact-item').forEach(el => el.classList.remove('active'));
-        const elActif = document.getElementById(`contact-${userId}`);
-        if (elActif) {
-            elActif.classList.add('active');
-            const pseudoPropre = elActif.querySelector('.contact-pseudo').innerText;
-            document.getElementById("chat-header-text").innerText = pseudoPropre;
-        }
-
-        // ANTI-CLIGNOTEMENT : On ne redessine le HTML que s'il y a un NOUVEAU message
-        if (msgs.length !== memoireNombreMessages || forcerScroll) {
-            container.innerHTML = "";
-            msgs.forEach(m => {
-                const dateObj = new Date(m.date);
-                const heureFormattee = dateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-
-                const div = document.createElement("div");
-                div.className = `message-bubble ${m.fromId === userId ? 'received' : 'sent'}`;
-                div.innerHTML = `${m.texte} <span class="msg-timestamp">${heureFormattee}</span>`;
-                container.appendChild(div);
-            });
-
-            memoireNombreMessages = msgs.length;
-            if (forcerScroll) container.scrollTop = container.scrollHeight;
-        }
-
-        document.getElementById("chat-input-block").style.display = "flex";
-        document.getElementById("mobile-messages-layout").classList.add("chat-active");
-
-        // Activer l'écouteur de la touche Entrée sur l'input (une seule fois)
-        const inputMsg = document.getElementById("message-text");
-        inputMsg.onkeydown = (e) => { if (e.key === "Enter") envoyerMessage(); };
-
-        // --- SCRUTATEUR LIVE SILENCIEUX ---
-        if (intervalleDiscussionLive) clearInterval(intervalleDiscussionLive);
-        intervalleDiscussionLive = setInterval(() => {
-            // Si on est toujours sur la page message et sur le même contact
-            if (chatActifUserId === userId && document.getElementById('messages-section').style.display === 'block') {
-                chargerDiscussion(userId, false); // Scroll sur 'false' pour ne pas déranger l'utilisateur s'il remonte l'historique !
-            }
-        }, 2500);
-    }
-}
-
-function fermerChatMobile() {
-    chatActifUserId = null;
-    if (intervalleDiscussionLive) clearInterval(intervalleDiscussionLive);
-    document.getElementById("mobile-messages-layout").classList.remove("chat-active");
-}
-
-async function envoyerMessage() {
-    const input = document.getElementById("message-text");
-    const texte = input.value;
-    if (!texte.trim() || !chatActifUserId) return;
-
-    const token = localStorage.getItem("social_token");
-    const res = await fetch(`${API_URL}/messages/${chatActifUserId}`, {
-        method: "POST", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
-        body: JSON.stringify({ texte })
-    });
-    
-    if (res.ok) {
-        input.value = ""; 
-        await chargerDiscussion(chatActifUserId, true); // Force le scroll tout en bas pour notre propre message
-        chargerMessagerie(); // Met à jour l'extrait sous le nom à gauche en temps réel !
+        else if (chatActifUserId) chargerDiscussion(chatActifUserId, false);
     }
 }
 
