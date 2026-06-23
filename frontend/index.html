@@ -11,6 +11,7 @@
 </head>
 <body>
     <div id="app">
+        
         <div id="auth-screen">
             <div class="logo-auth"><span style="color: #dfb142;">•</span> Jo Socio</div>
             <h2>Bienvenue</h2>
@@ -33,16 +34,16 @@
                     </div>
 
                     <nav class="menu">
-                        <a href="#" onclick="naviguerVers('feed')" class="menu-item active" id="nav-feed">
+                        <a href="javascript:void(0)" onclick="naviguerVers('feed')" class="menu-item active" id="nav-feed">
                             <i class="fa-solid fa-house"></i> Accueil
                         </a>
-                        <a href="#" onclick="naviguerVers('profil')" class="menu-item" id="nav-profil">
+                        <a href="javascript:void(0)" onclick="naviguerVers('profil')" class="menu-item" id="nav-profil">
                             <i class="fa-solid fa-user"></i> Mon Profil
                         </a>
-                        <a href="#" onclick="naviguerVers('messages')" class="menu-item" id="nav-messages">
+                        <a href="javascript:void(0)" onclick="naviguerVers('messages')" class="menu-item" id="nav-messages">
                             <i class="fa-solid fa-envelope"></i> Messages
                         </a>
-                        <a href="#" onclick="naviguerVers('notifications')" class="menu-item" id="nav-notifications">
+                        <a href="javascript:void(0)" onclick="naviguerVers('notifications')" class="menu-item" id="nav-notifications">
                             <i class="fa-solid fa-bell"></i> Notifications 
                             <span id="notif-badge" style="display:none; background: #e54d42; color:white; padding:2px 6px; border-radius:10px; font-size:10px; margin-left: 5px;">0</span>
                         </a>
@@ -54,7 +55,7 @@
                         </div>
                         <div id="search-results"></div>
                         
-                        <a href="#" onclick="deconnecter()" class="menu-item logout-btn">
+                        <a href="javascript:void(0)" onclick="deconnecter()" class="menu-item logout-btn">
                             <i class="fa-solid fa-right-from-bracket"></i> Déconnexion
                         </a>
                     </nav>
@@ -101,7 +102,6 @@
                             <h2 id="profile-pseudo">Chargement...</h2>
                             <p id="profile-stats">Abonnements : 0</p>
                             <div id="profile-action-container" style="margin-top: 15px;"></div>
-                            
                             <div id="profile-settings-container"></div>
                         </div>
                         <div class="divider"><span>PUBLICATIONS</span></div>
@@ -141,20 +141,20 @@
                 </main>
 
                 <nav class="bottom-mobile-nav mobile-only">
-                    <a href="#" onclick="naviguerVers('feed')" class="mobile-nav-item active" id="mob-nav-feed">
+                    <a href="javascript:void(0)" onclick="naviguerVers('feed')" class="mobile-nav-item active" id="mob-nav-feed">
                         <i class="fa-solid fa-house"></i>
                     </a>
-                    <a href="#" onclick="naviguerVers('notifications')" class="mobile-nav-item" id="mob-nav-notifications" style="position: relative;">
+                    <a href="javascript:void(0)" onclick="naviguerVers('notifications')" class="mobile-nav-item" id="mob-nav-notifications" style="position: relative;">
                         <i class="fa-solid fa-bell"></i>
                         <span id="mob-notif-badge" style="display:none; position:absolute; top:5px; right:10px; background: #e54d42; color:white; padding:2px 5px; border-radius:10px; font-size:10px;">0</span>
                     </a>
-                    <a href="#" onclick="naviguerVers('messages')" class="mobile-nav-item" id="mob-nav-messages">
+                    <a href="javascript:void(0)" onclick="naviguerVers('messages')" class="mobile-nav-item" id="mob-nav-messages">
                         <i class="fa-solid fa-envelope"></i>
                     </a>
-                    <a href="#" onclick="naviguerVers('profil')" class="mobile-nav-item" id="mob-nav-profil">
+                    <a href="javascript:void(0)" onclick="naviguerVers('profil')" class="mobile-nav-item" id="mob-nav-profil">
                         <i class="fa-solid fa-user"></i>
                     </a>
-                    <a href="#" onclick="deconnecter()" class="mobile-nav-item">
+                    <a href="javascript:void(0)" onclick="deconnecter()" class="mobile-nav-item">
                         <i class="fa-solid fa-right-from-bracket"></i>
                     </a>
                 </nav>
@@ -162,6 +162,8 @@
             </div>
         </div>
         
+        <div id="toast-container"></div>
+
         <div id="crop-modal" class="modal-overlay" style="display: none;">
             <div class="modal-box">
                 <h3>Ajuster votre photo de profil</h3>
