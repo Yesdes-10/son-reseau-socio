@@ -4,6 +4,8 @@ let fichierImageSelectionne = null;
 let chatActifUserId = null; 
 let cropperInstance = null;
 let dernierIdNotification = null;
+let intervalleDiscussionLive = null;
+let memoireNombreMessages = 0;
 
 // --- UTILITAIRES UX ---
 function formaterDateRelative(dateISO) {
@@ -43,10 +45,7 @@ window.onload = () => {
         naviguerVers('feed');
         
         actualiserBadgeNotifications(true);
-        
-        setInterval(() => {
-            actualiserBadgeNotifications(false);
-        }, 5000);
+        setInterval(() => { actualiserBadgeNotifications(false); }, 5000);
     }
 };
 
@@ -180,9 +179,13 @@ function afficherEcranPrincipal() {
 }
 
 function naviguerVers(section, targetId = null) {
-    // Retirer 'active' des menus Bureau
+    // SÉCURITÉ : couper le rafraichissement des messages si on quitte la page
+    if (section !== 'messages' && intervalleDiscussionLive) {
+        clearInterval(intervalleDiscussionLive);
+        intervalleDiscussionLive = null;
+    }
+
     document.querySelectorAll('.menu-item').forEach(el => el.classList.remove('active'));
-    // Retirer 'active' des menus Mobile
     document.querySelectorAll('.mobile-nav-item').forEach(el => el.classList.remove('active'));
     
     document.getElementById('feed-section').style.display = "none";
@@ -190,7 +193,6 @@ function naviguerVers(section, targetId = null) {
     document.getElementById('messages-section').style.display = "none";
     document.getElementById('notifications-section').style.display = "none";
 
-    // Si on navigue vers la messagerie, on s'assure d'afficher la liste des contacts sur mobile
     if (section === 'messages') {
         document.getElementById('mobile-messages-layout').classList.remove('chat-active');
         chatActifUserId = null;
@@ -262,7 +264,6 @@ async function actualiserBadgeNotifications(silencieux = false) {
             const notifs = await res.json();
             const nonLues = notifs.filter(n => !n.read);
             
-            // Cible les 2 badges (Bureau et Mobile)
             const badge = document.getElementById("notif-badge");
             const badgeMob = document.getElementById("mob-notif-badge");
             
@@ -276,7 +277,6 @@ async function actualiserBadgeNotifications(silencieux = false) {
                     const derniereAlerte = notifs[0];
                     if (derniereAlerte.id !== dernierIdNotification && !derniereAlerte.read) {
                         dernierIdNotification = derniereAlerte.id;
-                        
                         const actionText = derniereAlerte.type === 'like' ? 'liké' : 'commenté';
                         afficherToast(`🔔 @${derniereAlerte.fromPseudo} a ${actionText} votre publication !`);
                         
@@ -291,14 +291,9 @@ async function actualiserBadgeNotifications(silencieux = false) {
                 badge.style.display = "none"; 
                 badgeMob.style.display = "none"; 
             }
-
-            if (notifs.length > 0) {
-                dernierIdNotification = notifs[0].id;
-            }
+            if (notifs.length > 0) dernierIdNotification = notifs[0].id;
         }
-    } catch (erreur) {
-        console.error("Erreur d'interrogation des notifications :", erreur);
-    }
+    } catch (erreur) { console.error(erreur); }
 }
 
 async function chargerNotifications() {
@@ -320,38 +315,56 @@ async function chargerNotifications() {
                 container.appendChild(div);
             });
         }
-        
         await fetch(`${API_URL}/notifications/read`, { method: "POST", headers: { "Authorization": `Bearer ${token}` } });
         document.getElementById("notif-badge").style.display = "none";
         document.getElementById("mob-notif-badge").style.display = "none";
     }
 }
 
-// --- MESSAGERIE PRIVÉE ET ADAPTATION MOBILE ---
+// --- MESSAGERIE PRIVÉE (VERSION EXCELLENCE UNIFIÉE) ---
+
 async function chargerMessagerie(forceUserChatId = null) {
     const token = localStorage.getItem("social_token");
     const res = await fetch(`${API_URL}/messages/contacts`, { headers: { "Authorization": `Bearer ${token}` } });
+    
     if (res.ok) {
         const contacts = await res.json();
         const container = document.getElementById("contacts-container");
+        if (!container) return;
         container.innerHTML = "";
 
         contacts.forEach(c => {
             const avatarContact = c.avatarUrl ? `${API_URL}${c.avatarUrl}` : PAR_DEFAUT_AVATAR;
+            
+            let snippet = "<span class='snippet-vide'>Nouvelle discussion</span>";
+            if (c.dernierMessage) {
+                snippet = c.dernierMessage.length > 24 ? c.dernierMessage.substring(0, 24) + "..." : c.dernierMessage;
+            }
+
             const div = document.createElement("div");
             div.className = "contact-item";
             div.id = `contact-${c._id}`;
-            div.innerHTML = `<img src="${avatarContact}" class="avatar-round-mini" style="width:30px; height:30px;"> <span>@${c.pseudo}</span>`;
+            div.innerHTML = `
+                <img src="${avatarContact}" class="avatar-round-mini" style="width:40px; height:40px; flex-shrink:0;"> 
+                <div class="contact-item-meta">
+                    <span class="contact-pseudo">@${c.pseudo}</span>
+                    <span class="contact-snippet">${snippet}</span>
+                </div>
+            `;
             div.onclick = () => chargerDiscussion(c._id, true);
             container.appendChild(div);
         });
 
+        if (chatActifUserId) {
+            const el = document.getElementById(`contact-${chatActifUserId}`);
+            if (el) el.classList.add('active');
+        }
+
         if (forceUserChatId) chargerDiscussion(forceUserChatId, true);
-        else if (chatActifUserId) chargerDiscussion(chatActifUserId, false);
     }
 }
 
-async function chargerDiscussion(userId, forcerScroll = true) {
+async function chargerDiscussion(userId, forcerScroll = false) {
     chatActifUserId = userId;
     const token = localStorage.getItem("social_token");
     const res = await fetch(`${API_URL}/messages/${userId}`, { headers: { "Authorization": `Bearer ${token}` } });
@@ -359,39 +372,57 @@ async function chargerDiscussion(userId, forcerScroll = true) {
     if (res.ok) {
         const msgs = await res.json();
         const container = document.getElementById("messages-history");
+        if (!container) return;
         
         document.querySelectorAll('.contact-item').forEach(el => el.classList.remove('active'));
         const elActif = document.getElementById(`contact-${userId}`);
         if (elActif) {
             elActif.classList.add('active');
-            document.getElementById("chat-header-text").innerText = `Discussion avec ${elActif.querySelector('span').innerText}`;
+            const pseudoPropre = elActif.querySelector('.contact-pseudo').innerText;
+            document.getElementById("chat-header-text").innerText = pseudoPropre;
         }
 
-        container.innerHTML = "";
-        msgs.forEach(m => {
-            const div = document.createElement("div");
-            div.className = `message-bubble ${m.fromId === userId ? 'received' : 'sent'}`;
-            div.innerText = m.texte;
-            container.appendChild(div);
-        });
+        if (msgs.length !== memoireNombreMessages || forcerScroll) {
+            container.innerHTML = "";
+            msgs.forEach(m => {
+                const dateObj = new Date(m.date);
+                const heureFormattee = dateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+                const div = document.createElement("div");
+                div.className = `message-bubble ${m.fromId === userId ? 'received' : 'sent'}`;
+                div.innerHTML = `${m.texte} <span class="msg-timestamp">${heureFormattee}</span>`;
+                container.appendChild(div);
+            });
+
+            memoireNombreMessages = msgs.length;
+            if (forcerScroll) container.scrollTop = container.scrollHeight;
+        }
 
         document.getElementById("chat-input-block").style.display = "flex";
-        
-        // ADAPTATION MOBILE : Activer la vue du chat
         document.getElementById("mobile-messages-layout").classList.add("chat-active");
-        
-        if (forcerScroll) container.scrollTop = container.scrollHeight;
+
+        const inputMsg = document.getElementById("message-text");
+        if (inputMsg) inputMsg.onkeydown = (e) => { if (e.key === "Enter") envoyerMessage(); };
+
+        if (intervalleDiscussionLive) clearInterval(intervalleDiscussionLive);
+        intervalleDiscussionLive = setInterval(() => {
+            const pageMsg = document.getElementById('messages-section');
+            if (chatActifUserId === userId && pageMsg && pageMsg.style.display === 'block') {
+                chargerDiscussion(userId, false);
+            }
+        }, 2500);
     }
 }
 
-// Fonction pour le bouton retour sur mobile
 function fermerChatMobile() {
     chatActifUserId = null;
+    if (intervalleDiscussionLive) clearInterval(intervalleDiscussionLive);
     document.getElementById("mobile-messages-layout").classList.remove("chat-active");
 }
 
 async function envoyerMessage() {
     const input = document.getElementById("message-text");
+    if (!input) return;
     const texte = input.value;
     if (!texte.trim() || !chatActifUserId) return;
 
@@ -402,15 +433,15 @@ async function envoyerMessage() {
     });
     if (res.ok) {
         input.value = ""; 
-        chargerDiscussion(chatActifUserId, true);
+        await chargerDiscussion(chatActifUserId, true);
+        chargerMessagerie(); 
     }
 }
 
-// --- PUBLICATIONS ---
+// --- PUBLICATIONS (CRUD) ---
 async function publier() {
     const contenu = document.getElementById("post-content").value;
     const token = localStorage.getItem("social_token");
-
     if (!contenu.trim() && !fichierImageSelectionne) return;
 
     const formData = new FormData();
