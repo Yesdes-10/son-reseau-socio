@@ -618,3 +618,35 @@ function fermerVisionneuseStatut() {
     document.getElementById('view-status-modal').style.display = 'none';
     chargerStatuts();
 }
+
+// --- GESTION DE LA RECHERCHE MOBILE (Barre YouTube) ---
+
+function ouvrirRechercheMobile() {
+    document.getElementById("mobile-search-overlay").style.display = "flex";
+    document.getElementById("mob-search-input").focus();
+}
+
+function fermerRechercheMobile() {
+    document.getElementById("mobile-search-overlay").style.display = "none";
+    document.getElementById("mob-search-input").value = "";
+    document.getElementById("mob-search-results-container").innerHTML = "";
+}
+
+async function rechercherUtilisateursMobile() {
+    const query = document.getElementById("mob-search-input").value.trim();
+    const container = document.getElementById("mob-search-results-container");
+    if (!query) { container.innerHTML = ""; return; }
+
+    const res = await fetchAPI(`/users/search?q=${query}`);
+    if (res && res.ok) {
+        const users = await res.json();
+        container.innerHTML = users.length === 0 ? "<p style='color:gray; font-size:12px;'>Aucun membre trouvé.</p>" : "";
+        users.forEach(u => {
+            container.innerHTML += `
+                <div class="user-result" style="margin-bottom: 8px;">
+                    <span>@${u.pseudo}</span>
+                    <button class="btn-primary" style="padding: 4px 10px; font-size: 11px;" onclick="suivreUtilisateur('${u._id}'); fermerRechercheMobile();">Suivre</button>
+                </div>`;
+        });
+    }
+}
