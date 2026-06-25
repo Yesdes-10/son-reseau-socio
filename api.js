@@ -39,7 +39,11 @@ function lireDB(fichier) {
         fs.writeFileSync(fichier, JSON.stringify([]));
         return [];
     }
-    return JSON.parse(fs.readFileSync(fichier, 'utf8'));
+    try {
+        return JSON.parse(fs.readFileSync(fichier, 'utf8'));
+    } catch(e) {
+        return []; // Évite un crash si le JSON est corrompu
+    }
 }
 
 function ecrireDB(fichier, donnees) {
@@ -76,15 +80,17 @@ function verifierToken(req, res, next) {
     });
 }
 
-// --- CONFIGURATION DES ROUTES ---
+// ============================================================================
+// CONFIGURATION DES ROUTES
+// ============================================================================
 
-// 1. AUTHENTIFICATION
+// --- 1. AUTHENTIFICATION ---
 app.post('/auth/inscription', (req, res) => {
     const { pseudo, password } = req.body;
     if (!pseudo || !password) return res.status(400).json({ erreur: "Champs requis." });
     
     const utilisateurs = lireDB(fileUsers);
-    if (utilisateurs.find(u => u.pseudo === pseudo)) {
+    if (utilisateurs.find(u => u.pseudo.toLowerCase() === pseudo.toLowerCase())) {
         return res.status(400).json({ erreur: "Ce pseudo est déjà pris." });
     }
 
@@ -99,7 +105,7 @@ app.post('/auth/inscription', (req, res) => {
 app.post('/auth/connexion', (req, res) => {
     const { pseudo, password } = req.body;
     const utilisateurs = lireDB(fileUsers);
-    const user = utilisateurs.find(u => u.pseudo === pseudo && u.password === password);
+    const user = utilisateurs.find(u => u.pseudo.toLowerCase() === pseudo.toLowerCase() && u.password === password);
     
     if (!user) return res.status(401).json({ erreur: "Identifiants incorrects." });
 
@@ -107,7 +113,8 @@ app.post('/auth/connexion', (req, res) => {
     res.json({ token, message: "Connecté avec succès." });
 });
 
-// 2. GESTION DES UTILISATEURS
+
+// --- 2. GESTION DES UTILISATEURS ---
 app.get('/users/me', verifierToken, (req, res) => {
     const utilisateurs = lireDB(fileUsers);
     const publications = lireDB(filePosts);
@@ -138,7 +145,7 @@ app.put('/users/me/pseudo', verifierToken, (req, res) => {
     const utilisateurs = lireDB(fileUsers);
     const moi = utilisateurs.find(u => u._id === req.userId);
 
-    if (utilisateurs.some(u => u.pseudo === nouveauPseudo.trim() && u._id !== req.userId)) {
+    if (utilisateurs.some(u => u.pseudo.toLowerCase() === nouveauPseudo.trim().toLowerCase() && u._id !== req.userId)) {
         return res.status(400).json({ erreur: "Ce pseudo est déjà pris." });
     }
     moi.pseudo = nouveauPseudo.trim();
@@ -150,22 +157,43 @@ app.delete('/users/me', verifierToken, (req, res) => {
     let utilisateurs = lireDB(fileUsers);
     let publications = lireDB(filePosts);
     let messages = lireDB(fileMessages);
+    let statuts = lireDB(fileStatuses);
 
     const index = utilisateurs.findIndex(u => u._id === req.userId);
+    if (index === -1) return res.status(404).json({ erreur: "Compte introuvable." });
     const moi = utilisateurs[index];
-    if (moi && moi.avatarUrl) {
+
+    // NETTOYAGE COMPLET DES FICHIERS SUR LE DISQUE
+    if (moi.avatarUrl) {
         const ancienChemin = path.join(__dirname, moi.avatarUrl);
         if (fs.existsSync(ancienChemin)) { try { fs.unlinkSync(ancienChemin); } catch(e){} }
     }
+    
+    publications.filter(p => p.auteurId === req.userId).forEach(p => {
+        if (p.imageUrl) {
+            const pathImg = path.join(__dirname, p.imageUrl);
+            if (fs.existsSync(pathImg)) { try { fs.unlinkSync(pathImg); } catch(e){} }
+        }
+    });
 
+    statuts.filter(s => s.userId === req.userId).forEach(s => {
+        if (s.mediaUrl) {
+            const pathImg = path.join(__dirname, s.mediaUrl);
+            if (fs.existsSync(pathImg)) { try { fs.unlinkSync(pathImg); } catch(e){} }
+        }
+    });
+
+    // Suppression dans les bases de données
     utilisateurs.splice(index, 1);
     publications = publications.filter(p => p.auteurId !== req.userId);
+    statuts = statuts.filter(s => s.userId !== req.userId);
     messages = messages.filter(m => m.fromId !== req.userId && m.toId !== req.userId);
 
     ecrireDB(fileUsers, utilisateurs);
     ecrireDB(filePosts, publications);
+    ecrireDB(fileStatuses, statuts);
     ecrireDB(fileMessages, messages);
-    res.json({ message: "Compte supprimé définitivement." });
+    res.json({ message: "Compte et données supprimés définitivement." });
 });
 
 app.get('/users/search', verifierToken, (req, res) => {
@@ -219,7 +247,8 @@ app.post('/users/:id/unfollow', verifierToken, (req, res) => {
     res.json({ message: "Vous ne suivez plus cet utilisateur." });
 });
 
-// 3. NOTIFICATIONS
+
+// --- 3. NOTIFICATIONS ---
 app.get('/notifications', verifierToken, (req, res) => {
     const utilisateurs = lireDB(fileUsers);
     const moi = utilisateurs.find(u => u._id === req.userId);
@@ -236,7 +265,8 @@ app.post('/notifications/read', verifierToken, (req, res) => {
     res.json({ message: "Notifications lues" });
 });
 
-// 4. MESSAGERIE (VERSION EXCELLENCE AVEC SIPPETS + TRIS)
+
+// --- 4. MESSAGERIE (CHATS) ---
 app.get('/messages/contacts', verifierToken, (req, res) => {
     const utilisateurs = lireDB(fileUsers);
     const messages = lireDB(fileMessages);
@@ -290,7 +320,8 @@ app.post('/messages/:userId', verifierToken, (req, res) => {
     res.status(201).json(nouveauMsg);
 });
 
-// 5. PUBLICATIONS (CRUD POSTS)
+
+// --- 5. PUBLICATIONS (FEED) ---
 app.post('/posts', verifierToken, upload.single('image'), (req, res) => {
     const { contenu } = req.body;
     if (!contenu && !req.file) return res.status(400).json({ erreur: "Le post ne peut pas être vide." });
@@ -390,7 +421,8 @@ app.delete('/posts/:id', verifierToken, (req, res) => {
     res.json({ message: "Post supprimé !" });
 });
 
-// 6. GESTION DES STATUTS PRIVÉS (STORIES ÉPHÉMÈRES DE 24H)
+
+// --- 6. GESTION DES STATUTS PRIVÉS (STORIES ÉPHÉMÈRES DE 24H) ---
 app.post('/statuses', verifierToken, upload.single('statusMedia'), (req, res) => {
     const { texte } = req.body;
     if (!texte && !req.file) return res.status(400).json({ erreur: "Le statut ne peut pas être vide." });
@@ -408,7 +440,7 @@ app.post('/statuses', verifierToken, upload.single('statusMedia'), (req, res) =>
         mediaUrl: req.file ? `/uploads/${req.file.filename}` : null,
         text: texte || "",
         date: new Date(),
-        vulespar: [] // Contient les IDs des utilisateurs ayant ouvert la story
+        vulespar: [] // Historique de lecture
     };
 
     statuts.unshift(nouveauStatut);
@@ -425,14 +457,13 @@ app.get('/statuses', verifierToken, (req, res) => {
     const maintenant = new Date().getTime();
     const limite24h = 24 * 60 * 60 * 1000;
 
-    // Filtrer les statuts valides (-24h) et appartenant à moi ou mes abonnements
+    // Filtrer : Moins de 24h ET appartenant à soi-même ou ses abonnements
     const statutsValides = statutsAll.filter(s => {
         const estRecent = (maintenant - new Date(s.date).getTime()) < limite24h;
         const estDeMesContacts = s.userId === req.userId || (moi.abonnements && moi.abonnements.includes(s.userId));
         return estRecent && estDeMesContacts;
     });
 
-    // Re-synchroniser les avatars et pseudos frais
     const rendus = statutsValides.map(s => {
         const auteur = utilisateurs.find(u => u._id === s.userId);
         return {
@@ -460,6 +491,24 @@ app.post('/statuses/:id/read', verifierToken, (req, res) => {
     res.json({ message: "Marqué comme lu" });
 });
 
-// --- EXECUTION UNIQUE DU PORT ---
+// NOUVEAU : Suppression manuelle de son propre statut
+app.delete('/statuses/:id', verifierToken, (req, res) => {
+    const statuts = lireDB(fileStatuses);
+    const index = statuts.findIndex(s => s._id === req.params.id);
+    
+    if (index === -1) return res.status(404).json({ erreur: "Statut introuvable." });
+    if (statuts[index].userId !== req.userId) return res.status(403).json({ erreur: "Interdit." });
+
+    if (statuts[index].mediaUrl) {
+        const cheminImage = path.join(__dirname, statuts[index].mediaUrl);
+        if (fs.existsSync(cheminImage)) { try { fs.unlinkSync(cheminImage); } catch(e){} }
+    }
+
+    statuts.splice(index, 1);
+    ecrireDB(fileStatuses, statuts);
+    res.json({ message: "Statut supprimé !" });
+});
+
+// --- EXECUTION DU SERVEUR ---
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`Serveur en ligne sur le port ${PORT}`));
