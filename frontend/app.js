@@ -482,16 +482,25 @@ async function actualiserBadgeNotifications(silencieux) {
         const nonLues = notifs.filter(n => !n.read);
         const b1 = document.getElementById("notif-badge");
         const b2 = document.getElementById("mob-notif-badge");
+        const b3 = document.getElementById("top-mob-notif-badge"); // Badge en-tête YouTube mobile
 
         if (nonLues.length > 0) {
-            b1.innerText = b2.innerText = nonLues.length;
-            b1.style.display = b2.style.display = "inline-block";
-            if (!silencieux && notifs[0]._id !== dernierIdNotification) {
+            if(b1) { b1.innerText = nonLues.length; b1.style.display = "inline-block"; }
+            if(b2) { b2.innerText = nonLues.length; b2.style.display = "inline-block"; }
+            if(b3) { b3.innerText = nonLues.length; b3.style.display = "inline-block"; }
+
+            if (!silencieux && notifs.length > 0 && notifs[0]._id !== dernierIdNotification) {
                 dernierIdNotification = notifs[0]._id;
                 afficherToast(`🔔 Nouvelle notification en attente !`);
-                b1.classList.add("badge-bounce"); b2.classList.add("badge-bounce");
+                if(b1) b1.classList.add("badge-bounce"); 
+                if(b2) b2.classList.add("badge-bounce");
+                if(b3) b3.classList.add("badge-bounce");
             }
-        } else { b1.style.display = b2.style.display = "none"; }
+        } else { 
+            if(b1) b1.style.display = "none"; 
+            if(b2) b2.style.display = "none"; 
+            if(b3) b3.style.display = "none"; 
+        }
     }
 }
 
@@ -508,6 +517,12 @@ async function chargerNotifications() {
             container.appendChild(div);
         });
         await fetchAPI("/notifications/read", { method: "POST" });
+        
+        // Cacher tous les badges une fois l'onglet ouvert
+        ["notif-badge", "mob-notif-badge", "top-mob-notif-badge"].forEach(id => {
+            const el = document.getElementById(id);
+            if(el) el.style.display = "none";
+        });
     }
 }
 
