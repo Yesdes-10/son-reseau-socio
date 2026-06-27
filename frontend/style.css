@@ -163,6 +163,30 @@ button, label {
 .status-plus-badge { position: absolute; bottom: 0; right: 0; background: var(--gold); color: #000; width: 16px; height: 16px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 900; border: 2px solid var(--panel-dark); }
 .status-name { font-size: 11px; color: var(--text-muted); max-width: 55px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: center; }
 
+/* =========================================================
+   NOUVEAU : EN-TÊTE YOUTUBE MOBILE (SMARTPHONE)
+   ========================================================= */
+.app-header-mobile {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 18px;
+    background-color: var(--bg-dark);
+    border-bottom: 1px solid var(--border-color);
+    position: sticky;
+    top: 0;
+    z-index: 1000;
+}
+.app-header-mobile .header-logo { font-size: 20px; font-weight: 700; color: var(--text-main); letter-spacing: -0.5px; }
+.app-header-mobile .header-actions { display: flex; align-items: center; gap: 22px; }
+.app-header-mobile .icon-btn-top { background: none; border: none; color: #fff; font-size: 20px; cursor: pointer; padding: 0; display: flex; }
+.app-header-mobile .notif-box { position: relative; display: flex; align-items: center; cursor: pointer; color: #fff; }
+.app-header-mobile .badge-top { 
+    position: absolute; top: -6px; right: -8px; background: var(--danger); 
+    color: white; font-size: 10px; font-weight: 700; padding: 1px 5px; 
+    border-radius: 10px; border: 2px solid var(--bg-dark); display: none;
+}
+
 /* HIERARCHIE DES CALQUES (Z-INDEX) */
 .bottom-mobile-nav { z-index: 1000; }
 .modal-overlay { z-index: 2000; }
@@ -195,7 +219,11 @@ button, label {
 @media (max-width: 768px) {
     .mobile-only { display: flex !important; }
     .desktop-only { display: none !important; }
-    .layout-container { flex-direction: column; padding-bottom: 60px; }
+    .layout-container { 
+        flex-direction: column; 
+        padding-bottom: 60px; 
+        min-height: calc(100vh - 53px); /* Ajusté pour soustraire la hauteur du header mobile ! */
+    }
     .content-area { padding: 15px 10px; width: 100%; box-sizing: border-box; }
     #auth-screen { margin: 40px auto; width: 92%; padding: 25px 20px; }
 
