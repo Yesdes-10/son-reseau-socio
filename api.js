@@ -42,7 +42,7 @@ function lireDB(fichier) {
     try {
         return JSON.parse(fs.readFileSync(fichier, 'utf8'));
     } catch(e) {
-        return []; // Évite un crash si le JSON est corrompu
+        return [];
     }
 }
 
@@ -252,13 +252,13 @@ app.post('/users/:id/unfollow', verifierToken, (req, res) => {
 app.get('/notifications', verifierToken, (req, res) => {
     const utilisateurs = lireDB(fileUsers);
     const moi = utilisateurs.find(u => u._id === req.userId);
-    res.json(moi.notifications || []);
+    res.json(moi ? (moi.notifications || []) : []);
 });
 
 app.post('/notifications/read', verifierToken, (req, res) => {
     const utilisateurs = lireDB(fileUsers);
     const moi = utilisateurs.find(u => u._id === req.userId);
-    if (moi.notifications) {
+    if (moi && moi.notifications) {
         moi.notifications.forEach(n => n.read = true);
         ecrireDB(fileUsers, utilisateurs);
     }
@@ -288,7 +288,7 @@ app.get('/messages/contacts', verifierToken, (req, res) => {
             if (contactsMap[interlocuteurId]) {
                 const timestampMsg = new Date(m.date).getTime();
                 if (timestampMsg > contactsMap[interlocuteurId].dateDernierMessage) {
-                    contactsMap[interlocuteurId].dernierMessage = m.texte;
+                    contactsMap[interlocuteurId].dernierMessage = m.mediaType === 'audio' ? "🎤 Message vocal" : m.texte;
                     contactsMap[interlocuteurId].dateDernierMessage = timestampMsg;
                 }
             }
@@ -299,22 +299,56 @@ app.get('/messages/contacts', verifierToken, (req, res) => {
     res.json(contactsTries);
 });
 
+// ROUTE INTEL : Lecture automatique au déclenchement du GET
 app.get('/messages/:userId', verifierToken, (req, res) => {
     const messages = lireDB(fileMessages);
     const cibleId = req.params.userId;
+    const moiId = req.userId;
+    let modifie = false;
+
+    // Passage en "lu" des messages reçus
+    messages.forEach(m => {
+        if (m.fromId === cibleId && m.toId === moiId && m.status !== 'read') {
+            m.status = 'read';
+            modifie = true;
+        }
+    });
+
+    if (modifie) ecrireDB(fileMessages, messages);
+
     const discussion = messages.filter(m =>
-        (m.fromId === req.userId && m.toId === cibleId) || (m.fromId === cibleId && m.toId === req.userId)
+        (m.fromId === moiId && m.toId === cibleId) || (m.fromId === cibleId && m.toId === moiId)
     ).sort((a, b) => new Date(a.date) - new Date(b.date));
+    
     res.json(discussion);
 });
 
-app.post('/messages/:userId', verifierToken, (req, res) => {
-    const { texte } = req.body;
+// Envoi de message (Texte OU Fichier Audio brut)
+app.post('/messages/:userId', verifierToken, upload.single('media'), (req, res) => {
+    const texte = req.body.texte;
     const cibleId = req.params.userId;
-    if (!texte || !texte.trim()) return res.status(400).json({ erreur: "Message vide." });
+    let mediaUrl = null;
+    let mediaType = null;
+
+    if (req.file) {
+        mediaUrl = `/uploads/${req.file.filename}`;
+        mediaType = req.file.mimetype.startsWith('audio/') ? 'audio' : 'image';
+    }
+
+    if ((!texte || !texte.trim()) && !mediaUrl) return res.status(400).json({ erreur: "Le message ne peut pas être vide." });
 
     const messages = lireDB(fileMessages);
-    const nouveauMsg = { id: Date.now().toString(), fromId: req.userId, toId: cibleId, texte: texte.trim(), date: new Date() };
+    const nouveauMsg = {
+        id: Date.now().toString(),
+        fromId: req.userId,
+        toId: cibleId,
+        texte: texte ? texte.trim() : "",
+        mediaUrl: mediaUrl,
+        mediaType: mediaType,
+        status: 'delivered', // Indique que le message est bien reçu par le serveur
+        date: new Date()
+    };
+    
     messages.push(nouveauMsg);
     ecrireDB(fileMessages, messages);
     res.status(201).json(nouveauMsg);
@@ -405,7 +439,7 @@ app.post('/posts/:id/comment', verifierToken, (req, res) => {
 });
 
 app.delete('/posts/:id', verifierToken, (req, res) => {
-    const publications = lireDB(filePosts);
+    let publications = lireDB(filePosts);
     const index = publications.findIndex(p => p._id === req.params.id);
     
     if (index === -1) return res.status(404).json({ erreur: "Post introuvable." });
@@ -416,7 +450,7 @@ app.delete('/posts/:id', verifierToken, (req, res) => {
         if (fs.existsSync(cheminImage)) { try { fs.unlinkSync(cheminImage); } catch(e){} }
     }
 
-    publications.splice(index, 1);
+    publications = publications.filter(x => x._id !== req.params.id);
     ecrireDB(filePosts, publications);
     res.json({ message: "Post supprimé !" });
 });
@@ -440,7 +474,7 @@ app.post('/statuses', verifierToken, upload.single('statusMedia'), (req, res) =>
         mediaUrl: req.file ? `/uploads/${req.file.filename}` : null,
         text: texte || "",
         date: new Date(),
-        vulespar: [] // Historique de lecture
+        vulespar: [] 
     };
 
     statuts.unshift(nouveauStatut);
@@ -457,7 +491,6 @@ app.get('/statuses', verifierToken, (req, res) => {
     const maintenant = new Date().getTime();
     const limite24h = 24 * 60 * 60 * 1000;
 
-    // Filtrer : Moins de 24h ET appartenant à soi-même ou ses abonnements
     const statutsValides = statutsAll.filter(s => {
         const estRecent = (maintenant - new Date(s.date).getTime()) < limite24h;
         const estDeMesContacts = s.userId === req.userId || (moi.abonnements && moi.abonnements.includes(s.userId));
@@ -491,9 +524,8 @@ app.post('/statuses/:id/read', verifierToken, (req, res) => {
     res.json({ message: "Marqué comme lu" });
 });
 
-// NOUVEAU : Suppression manuelle de son propre statut
 app.delete('/statuses/:id', verifierToken, (req, res) => {
-    const statuts = lireDB(fileStatuses);
+    let statuts = lireDB(fileStatuses);
     const index = statuts.findIndex(s => s._id === req.params.id);
     
     if (index === -1) return res.status(404).json({ erreur: "Statut introuvable." });
@@ -504,7 +536,7 @@ app.delete('/statuses/:id', verifierToken, (req, res) => {
         if (fs.existsSync(cheminImage)) { try { fs.unlinkSync(cheminImage); } catch(e){} }
     }
 
-    statuts.splice(index, 1);
+    statuts = statuts.filter(x => x._id !== req.params.id);
     ecrireDB(fileStatuses, statuts);
     res.json({ message: "Statut supprimé !" });
 });

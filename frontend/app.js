@@ -10,6 +10,12 @@ let intervalleDiscussionLive = null;
 let memoireNombreMessages = 0;
 let statusTimerInterval = null;
 
+// Variables pour l'enregistrement vocal
+let mediaRecorder = null;
+let audioChunks = [];
+let recordingTimer = null;
+let recordingSeconds = 0;
+
 // --- REQUÊTES GENERALES AUX EN-TÊTES API ---
 async function fetchAPI(endpoint, options = {}) {
     const token = localStorage.getItem("social_token");
@@ -392,7 +398,7 @@ async function desuivreUtilisateur(userId) {
 
 // --- MESSAGERIE EXCELLENCE UNIFIÉE ET LIVE POLLING ---
 async function chargerMessagerie(forceUserChatId = null) {
-    chargerStatuts(); // Lance le chargement des Stories privées en haut !
+    chargerStatuts(); 
     const res = await fetchAPI("/messages/contacts");
     if (res && res.ok) {
         const contacts = await res.json();
@@ -437,9 +443,28 @@ async function chargerDiscussion(userId, forcerScroll = false) {
             container.innerHTML = "";
             msgs.forEach(m => {
                 const heure = new Date(m.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                const estMonMessage = m.fromId !== userId;
+                let checks = "";
+                
+                // Indicateurs de lecture : double coche bleue (Lu) ou grise (Distribué)
+                if (estMonMessage) {
+                    if (m.status === 'read') {
+                        checks = `<span style="color: #34b7f1; font-size: 11px; margin-left: 5px;"><i class="fa-solid fa-check-double"></i></span>`;
+                    } else {
+                        checks = `<span style="color: #999; font-size: 11px; margin-left: 5px;"><i class="fa-solid fa-check-double"></i></span>`;
+                    }
+                }
+
+                let contenu = m.texte;
+                if (m.mediaType === 'audio') {
+                    contenu = `<audio src="${API_URL}${m.mediaUrl}" controls style="height: 35px; width: 220px; outline: none;"></audio>`;
+                } else if (m.mediaUrl) {
+                    contenu = `<img src="${API_URL}${m.mediaUrl}" style="max-width: 200px; border-radius: 8px;"><br>${m.texte || ""}`;
+                }
+
                 const div = document.createElement("div");
-                div.className = `message-bubble ${m.fromId === userId ? 'received' : 'sent'}`;
-                div.innerHTML = `${m.texte} <span class="msg-timestamp">${heure}</span>`;
+                div.className = `message-bubble ${estMonMessage ? 'sent' : 'received'}`;
+                div.innerHTML = `${contenu} <span class="msg-timestamp" style="display:inline-block; font-size:10px; opacity:0.8; margin-top:5px;">${heure} ${checks}</span>`;
                 container.appendChild(div);
             });
             memoireNombreMessages = msgs.length;
@@ -474,6 +499,75 @@ function fermerChatMobile() {
     document.getElementById("mobile-messages-layout").classList.remove("chat-active");
 }
 
+// --- LOGIQUE VOCALE (MICROPHONE) ---
+async function demarrerEnregistrementVocal(e) {
+    if (e && e.cancelable) e.preventDefault();
+    try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        mediaRecorder = new MediaRecorder(stream);
+        audioChunks = [];
+
+        mediaRecorder.ondataavailable = event => {
+            if (event.data.size > 0) audioChunks.push(event.data);
+        };
+
+        mediaRecorder.start();
+        document.getElementById("voice-recording-indicator").style.display = "flex";
+        document.getElementById("message-text").style.display = "none";
+        document.getElementById("btn-send-text").style.display = "none";
+        
+        recordingSeconds = 0;
+        document.getElementById("recording-timer").innerText = "0:00";
+        recordingTimer = setInterval(() => {
+            recordingSeconds++;
+            const mins = Math.floor(recordingSeconds / 60);
+            const secs = recordingSeconds % 60;
+            document.getElementById("recording-timer").innerText = `${mins}:${secs < 10 ? '0' : ''}${secs}`;
+        }, 1000);
+    } catch (err) {
+        afficherToast("Accès au microphone refusé.");
+    }
+}
+
+function arreterEtEnvoyerVocal(e) {
+    if (e && e.cancelable) e.preventDefault();
+    if (mediaRecorder && mediaRecorder.state === "recording") {
+        mediaRecorder.onstop = async () => {
+            fermerIndicateurVocal();
+            const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+            if (audioBlob.size > 0 && chatActifUserId) {
+                const formData = new FormData();
+                formData.append("media", audioBlob, "vocal.webm");
+                const res = await fetchAPI(`/messages/${chatActifUserId}`, {
+                    method: "POST", body: formData
+                });
+                if (res && res.ok) {
+                    chargerDiscussion(chatActifUserId, true);
+                    chargerMessagerie();
+                }
+            }
+            mediaRecorder.stream.getTracks().forEach(track => track.stop());
+        };
+        mediaRecorder.stop();
+    }
+    clearInterval(recordingTimer);
+}
+
+function annulerEnregistrementVocal() {
+    if (mediaRecorder && mediaRecorder.state === "recording") {
+        mediaRecorder.stop();
+        fermerIndicateurVocal();
+        mediaRecorder.stream.getTracks().forEach(track => track.stop());
+    }
+    clearInterval(recordingTimer);
+}
+
+function fermerIndicateurVocal() {
+    document.getElementById("voice-recording-indicator").style.display = "none";
+    document.getElementById("message-text").style.display = "block";
+    document.getElementById("btn-send-text").style.display = "block";
+}
+
 // --- NOTIFICATIONS ---
 async function actualiserBadgeNotifications(silencieux) {
     const res = await fetchAPI("/notifications");
@@ -482,7 +576,7 @@ async function actualiserBadgeNotifications(silencieux) {
         const nonLues = notifs.filter(n => !n.read);
         const b1 = document.getElementById("notif-badge");
         const b2 = document.getElementById("mob-notif-badge");
-        const b3 = document.getElementById("top-mob-notif-badge"); // Badge en-tête YouTube mobile
+        const b3 = document.getElementById("top-mob-notif-badge"); 
 
         if (nonLues.length > 0) {
             if(b1) { b1.innerText = nonLues.length; b1.style.display = "inline-block"; }
@@ -518,7 +612,6 @@ async function chargerNotifications() {
         });
         await fetchAPI("/notifications/read", { method: "POST" });
         
-        // Cacher tous les badges une fois l'onglet ouvert
         ["notif-badge", "mob-notif-badge", "top-mob-notif-badge"].forEach(id => {
             const el = document.getElementById(id);
             if(el) el.style.display = "none";
@@ -526,7 +619,7 @@ async function chargerNotifications() {
     }
 }
 
-// --- LOGIQUE DES STORIES / STATUTS PRIVÉS (INTERACTION API) ---
+// --- LOGIQUE DES STORIES / STATUTS PRIVÉS ---
 async function chargerStatuts() {
     const res = await fetchAPI("/statuses");
     if (!res || !res.ok) return;
@@ -534,7 +627,6 @@ async function chargerStatuts() {
     const listContainer = document.getElementById("contacts-statuses-container");
     listContainer.innerHTML = "";
 
-    // Regrouper les statuts par ID utilisateur (Pour n'afficher qu'une bulle par membre)
     let mapMembres = {};
     statuts.forEach(s => {
         if (!mapMembres[s.userId]) {
@@ -576,7 +668,7 @@ function previsualiserMediaStatut(event) {
     }
 }
 
-function retirarMediaStatut() {
+function retirerMediaStatut() {
     fichierStatutSelectionne = null;
     document.getElementById('status-file-upload').value = "";
     document.getElementById('status-media-preview-container').style.display = 'none';
@@ -603,7 +695,6 @@ function demarrerVisionneuseStatut(statusArray) {
         if (index >= statusArray.length) { fermerVisionneuseStatut(); return; }
         const s = statusArray[index];
         
-        // Signaler la story lue au backend
         await fetchAPI(`/statuses/${s._id}/read`, { method: "POST" });
 
         document.getElementById('viewer-author-name').innerText = `@${s.author}`;
@@ -617,7 +708,6 @@ function demarrerVisionneuseStatut(statusArray) {
             body.innerHTML = `<div class="big-text-status">"${s.text}"</div>`;
         }
 
-        // Animation de jauge 5 secondes
         const fillBar = document.getElementById('status-progress-bar');
         fillBar.style.transition = 'none'; fillBar.style.width = '0%';
         setTimeout(() => { fillBar.style.transition = 'width 5000ms linear'; fillBar.style.width = '100%'; }, 50);
@@ -634,8 +724,7 @@ function fermerVisionneuseStatut() {
     chargerStatuts();
 }
 
-// --- GESTION DE LA RECHERCHE MOBILE (Barre YouTube) ---
-
+// --- GESTION DE LA RECHERCHE MOBILE ---
 function ouvrirRechercheMobile() {
     document.getElementById("mobile-search-overlay").style.display = "flex";
     document.getElementById("mob-search-input").focus();
