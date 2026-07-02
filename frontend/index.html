@@ -4,6 +4,12 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Jo Socio</title>
+    
+    <!-- CONFIGURATION PWA -->
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#121212">
+    <link rel="apple-touch-icon" href="icon-192.png">
+
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.1/cropper.min.css">
@@ -30,6 +36,7 @@
 <body>
     <div id="app">
         
+        <!-- ÉCRAN DE CONNEXION / INSCRIPTION -->
         <div id="auth-screen">
             <div class="logo-auth"><span style="color: #dfb142;">•</span> Jo Socio</div>
             <h2>Bienvenue</h2>
@@ -40,6 +47,7 @@
             <p id="auth-message"></p>
         </div>
 
+        <!-- ÉCRAN PRINCIPAL -->
         <div id="main-screen" style="display: none;">
             
             <header class="app-header-mobile mobile-only">
@@ -82,6 +90,7 @@
 
                 <main class="content-area">
                     
+                    <!-- FEED -->
                     <div id="feed-section">
                         <h2 class="section-title desktop-only">Fil d'actualité</h2>
                         <div class="create-post">
@@ -104,6 +113,7 @@
                         <div id="feed-container"></div>
                     </div>
 
+                    <!-- PROFIL -->
                     <div id="profile-section" style="display: none;">
                         <div class="profile-header">
                             <div class="profile-avatar-container" style="position: relative; width: 110px; margin: 0 auto 20px;">
@@ -120,6 +130,7 @@
                         <div id="profile-posts-container"></div>
                     </div>
 
+                    <!-- MESSAGES -->
                     <div id="messages-section" style="display: none;">
                         <h2 class="section-title desktop-only">Messagerie Privée</h2>
                         <div class="messages-layout" id="mobile-messages-layout">
@@ -146,9 +157,12 @@
                                 </div>
                                 
                                 <div id="messages-history" class="messages-history"></div>
-                                
+    
+                                <div id="typing-indicator" style="display: none; padding: 5px 20px; font-size: 11px; color: var(--gold); font-style: italic;">
+                                    L'utilisateur écrit...
+                                </div>
+
                                 <div id="chat-input-block" class="chat-input-area" style="display: none;">
-                                    
                                     <div id="voice-recording-indicator" class="voice-recording-feedback" style="display: none;">
                                         <div class="pulsing-red-dot"></div>
                                         <span id="recording-timer">0:00</span>
@@ -167,11 +181,11 @@
                                         <i class="fa-solid fa-microphone"></i>
                                     </button>
                                 </div>
-
                             </div>
                         </div>
                     </div>
 
+                    <!-- NOTIFICATIONS -->
                     <div id="notifications-section" style="display: none;">
                         <h2 class="section-title desktop-only">Vos Notifications</h2>
                         <div id="notifications-container"></div>
@@ -179,6 +193,7 @@
 
                 </main>
 
+                <!-- NAV MOBILE -->
                 <nav class="bottom-mobile-nav mobile-only">
                     <a href="javascript:void(0)" onclick="naviguerVers('feed')" class="mobile-nav-item active" id="mob-nav-feed"><i class="fa-solid fa-house"></i></a>
                     <a href="javascript:void(0)" onclick="naviguerVers('notifications')" class="mobile-nav-item" id="mob-nav-notifications" style="position: relative;">
@@ -193,6 +208,7 @@
             </div>
         </div>
         
+        <!-- MODALES ET OVERLAYS -->
         <div id="toast-container"></div>
 
         <div id="mobile-search-overlay" class="modal-overlay" style="display: none;" onclick="if(event.target === this) fermerRechercheMobile()">
@@ -253,7 +269,26 @@
 
     </div>
 
+    <!-- LIBRAIRIES EXTERNES -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.1/cropper.min.js"></script>
+    
+    <!-- ATTENTION : SOCKET.IO DOIT ÊTRE CHARGÉ AVANT APP.JS -->
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
     <script src="app.js"></script>
+
+    <!-- ENREGISTREMENT DU SERVICE WORKER (PWA) -->
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/sw.js')
+                .then(registration => {
+                    console.log('Service Worker enregistré avec succès pour la PWA !', registration.scope);
+                })
+                .catch(error => {
+                    console.log('Échec de l\'enregistrement du Service Worker :', error);
+                });
+            });
+        }
+    </script>
 </body>
 </html>

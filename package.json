@@ -15,6 +15,6 @@
     "socket.io": "^4.8.3"
   },
   "scripts": {
-  "start": "node api.js"
-}
+    "start": "node api.js"
+  }
 }

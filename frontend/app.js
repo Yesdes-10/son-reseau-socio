@@ -6,15 +6,18 @@ let fichierStatutSelectionne = null;
 let chatActifUserId = null; 
 let cropperInstance = null;
 let dernierIdNotification = null;
-let intervalleDiscussionLive = null;
-let memoireNombreMessages = 0;
+let memoireDiscussionState = ""; 
 let statusTimerInterval = null;
 
-// Variables pour l'enregistrement vocal
+// Variables hardware d'enregistrement vocal
 let mediaRecorder = null;
 let audioChunks = [];
 let recordingTimer = null;
 let recordingSeconds = 0;
+
+// Variables WebSockets
+let socket = null;
+let typingTimeout = null;
 
 // --- REQUÊTES GENERALES AUX EN-TÊTES API ---
 async function fetchAPI(endpoint, options = {}) {
@@ -63,17 +66,69 @@ window.onload = () => {
         mettreAjourAvatarsEtInfosEnCochiffre();
         naviguerVers('feed');
         actualiserBadgeNotifications(true);
-        setInterval(() => { actualiserBadgeNotifications(false); }, 6000);
+        
+        // --- INITIALISATION DU MOTEUR WEBSOCKETS ---
+        initialiserWebSockets(token);
+
+        // Écouteur d'événement pour l'indicateur de frappe
+        const inputMessage = document.getElementById("message-text");
+        if(inputMessage) {
+            inputMessage.addEventListener('input', gererIndicateurDeFrappe);
+        }
     }
 };
 
-// --- ROUTAGE INTERNE (SPA) ---
-function naviguerVers(section, targetId = null) {
-    if (section !== 'messages' && intervalleDiscussionLive) {
-        clearInterval(intervalleDiscussionLive);
-        intervalleDiscussionLive = null;
-    }
+// ============================================================================
+// MOTEUR WEBSOCKETS (ZÉRO LATENCE)
+// ============================================================================
+function initialiserWebSockets(token) {
+    socket = io(API_URL, { auth: { token } });
 
+    socket.on('newMessage', (msg) => {
+        if (chatActifUserId === msg.fromId && document.getElementById('messages-section').style.display === 'block') {
+            chargerDiscussion(chatActifUserId, true);
+            socket.emit('markAsRead', msg.fromId);
+        } else {
+            chargerMessagerie();
+            actualiserBadgeNotifications(false);
+            afficherToast("Nouveau message reçu !");
+        }
+    });
+
+    socket.on('userTyping', (userId) => {
+        if (chatActifUserId === userId) {
+            document.getElementById('typing-indicator').style.display = 'block';
+            const hist = document.getElementById("messages-history");
+            hist.scrollTop = hist.scrollHeight;
+        }
+    });
+
+    socket.on('userStoppedTyping', (userId) => {
+        if (chatActifUserId === userId) {
+            document.getElementById('typing-indicator').style.display = 'none';
+        }
+    });
+
+    socket.on('messagesReadBy', (userId) => {
+        if (chatActifUserId === userId) {
+            chargerDiscussion(userId, false); 
+        }
+    });
+}
+
+function gererIndicateurDeFrappe() {
+    if (!chatActifUserId || !socket) return;
+    socket.emit('typing', chatActifUserId);
+    clearTimeout(typingTimeout);
+    typingTimeout = setTimeout(() => {
+        socket.emit('stopTyping', chatActifUserId);
+    }, 1500); 
+}
+
+// ============================================================================
+// LOGIQUE DE NAVIGATION ET DE VUES
+// ============================================================================
+function naviguerVers(section, targetId = null) {
     document.querySelectorAll('.menu-item, .mobile-nav-item').forEach(el => el.classList.remove('active'));
     document.getElementById('feed-section').style.display = "none";
     document.getElementById('profile-section').style.display = "none";
@@ -396,7 +451,7 @@ async function desuivreUtilisateur(userId) {
     if(res && res.ok) { afficherToast("Abonnement retiré."); chargerProfil(userId); }
 }
 
-// --- MESSAGERIE EXCELLENCE UNIFIÉE ET LIVE POLLING ---
+// --- MESSAGERIE EXCELLENCE UNIFIÉE ---
 async function chargerMessagerie(forceUserChatId = null) {
     chargerStatuts(); 
     const res = await fetchAPI("/messages/contacts");
@@ -439,53 +494,50 @@ async function chargerDiscussion(userId, forcerScroll = false) {
             document.getElementById("chat-header-text").innerText = activeItem.querySelector('.contact-pseudo').innerText;
         }
 
-        if (msgs.length !== memoireNombreMessages || forcerScroll) {
+        const etatActuel = JSON.stringify(msgs);
+        if (etatActuel !== memoireDiscussionState || forcerScroll) {
             container.innerHTML = "";
             msgs.forEach(m => {
                 const heure = new Date(m.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                const estMonMessage = m.fromId !== userId;
-                let checks = "";
+                const estMoi = m.fromId !== userId;
                 
-                // Indicateurs de lecture : double coche bleue (Lu) ou grise (Distribué)
-                if (estMonMessage) {
-                    if (m.status === 'read') {
-                        checks = `<span style="color: #34b7f1; font-size: 11px; margin-left: 5px;"><i class="fa-solid fa-check-double"></i></span>`;
-                    } else {
-                        checks = `<span style="color: #999; font-size: 11px; margin-left: 5px;"><i class="fa-solid fa-check-double"></i></span>`;
-                    }
+                let cocheHTML = "";
+                if (estMoi) {
+                    if (m.status === 'read') cocheHTML = `<span style="color: #34b7f1; font-size: 11px; margin-left: 5px;"><i class="fa-solid fa-check-double"></i></span>`;
+                    else if (m.status === 'delivered') cocheHTML = `<span style="color: #999; font-size: 11px; margin-left: 5px;"><i class="fa-solid fa-check-double"></i></span>`;
+                    else cocheHTML = `<span style="color: #999; font-size: 11px; margin-left: 5px;"><i class="fa-solid fa-check"></i></span>`;
                 }
 
-                let contenu = m.texte;
+                let contenuHTML = m.texte;
                 if (m.mediaType === 'audio') {
-                    contenu = `<audio src="${API_URL}${m.mediaUrl}" controls style="height: 35px; width: 220px; outline: none;"></audio>`;
+                    contenuHTML = `<audio src="${API_URL}${m.mediaUrl}" controls style="height: 35px; width: 220px; outline: none;"></audio>`;
                 } else if (m.mediaUrl) {
-                    contenu = `<img src="${API_URL}${m.mediaUrl}" style="max-width: 200px; border-radius: 8px;"><br>${m.texte || ""}`;
+                    contenuHTML = `<img src="${API_URL}${m.mediaUrl}" style="max-width: 200px; border-radius: 8px;"><br>${m.texte || ""}`;
                 }
 
                 const div = document.createElement("div");
-                div.className = `message-bubble ${estMonMessage ? 'sent' : 'received'}`;
-                div.innerHTML = `${contenu} <span class="msg-timestamp" style="display:inline-block; font-size:10px; opacity:0.8; margin-top:5px;">${heure} ${checks}</span>`;
+                div.className = `message-bubble ${estMoi ? 'sent' : 'received'}`;
+                div.innerHTML = `${contenuHTML} <span class="msg-timestamp" style="display:inline-block; font-size:10px; opacity:0.8; margin-top:5px;">${heure} ${cocheHTML}</span>`;
                 container.appendChild(div);
             });
-            memoireNombreMessages = msgs.length;
+
+            memoireDiscussionState = etatActuel;
             if (forcerScroll) container.scrollTop = container.scrollHeight;
         }
 
         document.getElementById("chat-input-block").style.display = "flex";
         document.getElementById("mobile-messages-layout").classList.add("chat-active");
-
-        if (intervalleDiscussionLive) clearInterval(intervalleDiscussionLive);
-        intervalleDiscussionLive = setInterval(() => {
-            if (chatActifUserId === userId && document.getElementById('messages-section').style.display === 'block') {
-                chargerDiscussion(userId, false);
-            }
-        }, 2500);
+        
+        if (socket && forcerScroll) socket.emit('markAsRead', userId);
     }
 }
 
 async function envoyerMessage() {
     const input = document.getElementById("message-text");
     if (!input.value.trim() || !chatActifUserId) return;
+
+    if (socket) socket.emit('stopTyping', chatActifUserId);
+
     const res = await fetchAPI(`/messages/${chatActifUserId}`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ texte: input.value })
@@ -494,8 +546,7 @@ async function envoyerMessage() {
 }
 
 function fermerChatMobile() {
-    chatActifUserId = null;
-    if (intervalleDiscussionLive) clearInterval(intervalleDiscussionLive);
+    chatActifUserId = null; 
     document.getElementById("mobile-messages-layout").classList.remove("chat-active");
 }
 
