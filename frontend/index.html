@@ -151,9 +151,14 @@
                             </div>
 
                             <div class="chat-window" id="chat-window">
-                                <div id="chat-header" style="display: flex; align-items: center; gap: 10px;">
-                                    <button id="back-to-contacts-btn" class="mobile-only" onclick="fermerChatMobile()" style="background: none; border: none; font-size: 18px; cursor: pointer; color: inherit;"><i class="fa-solid fa-arrow-left"></i></button>
-                                    <span id="chat-header-text">Sélectionnez un membre pour discuter</span>
+                                <div id="chat-header" style="display: flex; justify-content: space-between; align-items: center;">
+                                    <div style="display: flex; align-items: center; gap: 10px;">
+                                        <button class="mobile-only btn-icon" onclick="fermerChatMobile()" style="background:transparent; border:none; color:var(--gold); padding:0;"><i class="fa-solid fa-arrow-left"></i></button>
+                                        <span id="chat-header-text">Sélectionnez un contact</span>
+                                    </div>
+                                    
+                                    <!-- L'input pour changer la couleur de la discussion -->
+                                    <input type="color" id="chat-color-picker" onchange="changerCouleurChat(this.value)" title="Personnaliser la couleur du chat">
                                 </div>
                                 
                                 <div id="messages-history" class="messages-history"></div>

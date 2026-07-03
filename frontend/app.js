@@ -487,6 +487,13 @@ async function chargerDiscussion(userId, forcerScroll = false) {
         const msgs = await res.json();
         const container = document.getElementById("messages-history");
         
+        // --- NOUVEAU : Application de la couleur sauvegardée ---
+        const savedColor = localStorage.getItem(`chat_color_${userId}`) || '#dfb142'; // Gold par défaut
+        appliquerCouleurChat(savedColor);
+        const picker = document.getElementById('chat-color-picker');
+        if (picker) picker.value = savedColor;
+        // --------------------------------------------------------
+
         document.querySelectorAll('.contact-item').forEach(el => el.classList.remove('active'));
         const activeItem = document.getElementById(`contact-${userId}`);
         if (activeItem) {
@@ -503,21 +510,24 @@ async function chargerDiscussion(userId, forcerScroll = false) {
                 
                 let cocheHTML = "";
                 if (estMoi) {
-                    if (m.status === 'read') cocheHTML = `<span style="color: #34b7f1; font-size: 11px; margin-left: 5px;"><i class="fa-solid fa-check-double"></i></span>`;
-                    else if (m.status === 'delivered') cocheHTML = `<span style="color: #999; font-size: 11px; margin-left: 5px;"><i class="fa-solid fa-check-double"></i></span>`;
-                    else cocheHTML = `<span style="color: #999; font-size: 11px; margin-left: 5px;"><i class="fa-solid fa-check"></i></span>`;
+                    if (m.status === 'read') cocheHTML = `<span class="msg-status-tick tick-read"><i class="fa-solid fa-check-double"></i></span>`;
+                    else if (m.status === 'delivered') cocheHTML = `<span class="msg-status-tick tick-delivered"><i class="fa-solid fa-check-double"></i></span>`;
+                    else cocheHTML = `<span class="msg-status-tick tick-sent"><i class="fa-solid fa-check"></i></span>`;
                 }
 
                 let contenuHTML = m.texte;
                 if (m.mediaType === 'audio') {
-                    contenuHTML = `<audio src="${API_URL}${m.mediaUrl}" controls style="height: 35px; width: 220px; outline: none;"></audio>`;
+                    contenuHTML = `<audio src="${API_URL}${m.mediaUrl}" controls class="chat-voice-player"></audio>`;
                 } else if (m.mediaUrl) {
                     contenuHTML = `<img src="${API_URL}${m.mediaUrl}" style="max-width: 200px; border-radius: 8px;"><br>${m.texte || ""}`;
                 }
 
+                // --- NOUVEAU : Bouton de suppression ---
+                const btnSupprimer = `<button class="btn-delete-msg" onclick="supprimerMessage('${m._id}')"><i class="fa-solid fa-trash"></i></button>`;
+
                 const div = document.createElement("div");
                 div.className = `message-bubble ${estMoi ? 'sent' : 'received'}`;
-                div.innerHTML = `${contenuHTML} <span class="msg-timestamp" style="display:inline-block; font-size:10px; opacity:0.8; margin-top:5px;">${heure} ${cocheHTML}</span>`;
+                div.innerHTML = `${contenuHTML} <span class="msg-timestamp">${heure} ${cocheHTML}</span> ${btnSupprimer}`;
                 container.appendChild(div);
             });
 
@@ -775,6 +785,18 @@ function fermerVisionneuseStatut() {
     chargerStatuts();
 }
 
+// --- PERSONNALISATION DES COULEURS ---
+function changerCouleurChat(couleur) {
+    if (!chatActifUserId) return;
+    // Sauvegarder la préférence pour cet utilisateur précis
+    localStorage.setItem(`chat_color_${chatActifUserId}`, couleur);
+    appliquerCouleurChat(couleur);
+}
+
+function appliquerCouleurChat(couleur) {
+    // Modifier la variable CSS dynamiquement
+    document.documentElement.style.setProperty('--chat-theme-color', couleur);
+}
 // --- GESTION DE LA RECHERCHE MOBILE ---
 function ouvrirRechercheMobile() {
     document.getElementById("mobile-search-overlay").style.display = "flex";
@@ -785,6 +807,19 @@ function fermerRechercheMobile() {
     document.getElementById("mobile-search-overlay").style.display = "none";
     document.getElementById("mob-search-input").value = "";
     document.getElementById("mob-search-results-container").innerHTML = "";
+}
+
+// --- SUPPRESSION DE MESSAGES ---
+async function supprimerMessage(messageId) {
+    if (!confirm("Voulez-vous vraiment supprimer ce message ?")) return;
+    
+    // Appel à l'API backend pour supprimer le message
+    const res = await fetchAPI(`/messages/${messageId}`, { method: "DELETE" });
+    if (res && res.ok) {
+        afficherToast("Message supprimé");
+        // On force le rechargement de la discussion pour faire disparaître le message
+        chargerDiscussion(chatActifUserId, true); 
+    }
 }
 
 async function rechercherUtilisateursMobile() {

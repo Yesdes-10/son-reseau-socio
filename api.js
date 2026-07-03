@@ -287,6 +287,39 @@ app.get('/messages/:userId', verifierToken, (req, res) => {
     res.json(discussion);
 });
 
+// --- SUPPRESSION D'UN MESSAGE ---
+app.delete('/messages/:id', verifyToken, async (req, res) => {
+    try {
+        const messageId = req.params.id;
+        const userId = req.user.id; // L'ID de l'utilisateur connecté (fourni par ton middleware verifyToken)
+
+        // 1. On cherche le message dans la base de données
+        const message = await Message.findById(messageId);
+        
+        if (!message) {
+            return res.status(404).json({ erreur: "Message introuvable." });
+        }
+
+        // 2. Sécurité : on vérifie que l'utilisateur a le droit de supprimer ce message
+        // On autorise la suppression seulement si l'utilisateur est l'expéditeur OU le destinataire
+        if (message.fromId !== userId && message.toId !== userId) {
+            return res.status(403).json({ erreur: "Tu n'es pas autorisé à supprimer ce message." });
+        }
+
+        // 3. Suppression effective du message
+        await Message.findByIdAndDelete(messageId);
+        
+        // 4. (Optionnel) Si le message contenait un fichier vocal ou une image, tu peux aussi ajouter la logique ici pour supprimer le fichier du dossier uploads/
+        // if (message.mediaUrl) { fs.unlinkSync(path.join(__dirname, '..', message.mediaUrl)); }
+
+        res.status(200).json({ succes: true, message: "Message supprimé avec succès." });
+
+    } catch (erreur) {
+        console.error("Erreur API suppression message :", erreur);
+        res.status(500).json({ erreur: "Erreur interne du serveur lors de la suppression." });
+    }
+});
+
 app.post('/messages/:userId', verifierToken, upload.single('media'), (req, res) => {
     const texte = req.body.texte;
     const cibleId = req.params.userId;

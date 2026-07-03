@@ -451,3 +451,60 @@ button, label { font-family: 'Poppins', sans-serif; border: none; padding: 10px 
     50% { opacity: 1; }
     100% { opacity: 0.5; }
 }
+/* 1. Déclarer la variable de thème dynamique (par défaut à la couleur Gold) */
+:root {
+    --chat-theme-color: #dfb142;
+}
+
+/* 2. Modifier la bulle envoyée pour utiliser cette variable */
+.message-bubble.sent { 
+    background: var(--chat-theme-color); 
+    color: #000; 
+    align-self: flex-end; 
+    border-bottom-right-radius: 2px; 
+    font-weight: 500; 
+}
+
+/* 3. Bouton de suppression de message (caché par défaut, visible au hover) */
+.btn-delete-msg {
+    position: absolute;
+    top: -10px;
+    right: -10px;
+    background: var(--danger);
+    color: white;
+    border: none;
+    border-radius: 50%;
+    width: 24px;
+    height: 24px;
+    font-size: 10px;
+    cursor: pointer;
+    display: none; /* Caché par défaut */
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.5);
+    z-index: 10;
+}
+
+/* Pour les messages reçus, on place le bouton à gauche */
+.message-bubble.received .btn-delete-msg {
+    right: auto;
+    left: -10px;
+}
+
+.message-bubble:hover .btn-delete-msg {
+    display: flex; /* Apparaît quand on passe la souris sur le message */
+}
+
+/* 4. Sélecteur de couleur dans le header */
+#chat-color-picker {
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    border: 2px solid var(--border-color);
+    border-radius: 50%;
+    cursor: pointer;
+    background: transparent;
+    outline: none;
+}
+#chat-color-picker::-webkit-color-swatch-wrapper { padding: 0; }
+#chat-color-picker::-webkit-color-swatch { border: none; border-radius: 50%; }
