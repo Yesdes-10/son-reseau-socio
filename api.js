@@ -288,29 +288,42 @@ app.get('/messages/:userId', verifierToken, (req, res) => {
 });
 
 // --- SUPPRESSION D'UN MESSAGE ---
-app.delete('/messages/:id', verifyToken, async (req, res) => {
+app.delete('/messages/:id', verifierToken, (req, res) => {
     try {
         const messageId = req.params.id;
-        const userId = req.user.id; // L'ID de l'utilisateur connecté (fourni par ton middleware verifyToken)
+        const userId = req.userId; // Utilisation de req.userId tel que défini dans verifierToken
 
-        // 1. On cherche le message dans la base de données
-        const message = await Message.findById(messageId);
+        // 1. On charge la base de données des messages
+        let messages = lireDB(fileMessages);
         
-        if (!message) {
+        // 2. On cherche l'index du message correspondant
+        const indexMessage = messages.findIndex(m => m.id === messageId);
+        
+        if (indexMessage === -1) {
             return res.status(404).json({ erreur: "Message introuvable." });
         }
 
-        // 2. Sécurité : on vérifie que l'utilisateur a le droit de supprimer ce message
-        // On autorise la suppression seulement si l'utilisateur est l'expéditeur OU le destinataire
+        const message = messages[indexMessage];
+
+        // 3. Sécurité : on vérifie que l'utilisateur a le droit de supprimer ce message
+        // Seuls l'expéditeur ou le destinataire peuvent le faire
         if (message.fromId !== userId && message.toId !== userId) {
             return res.status(403).json({ erreur: "Tu n'es pas autorisé à supprimer ce message." });
         }
 
-        // 3. Suppression effective du message
-        await Message.findByIdAndDelete(messageId);
+        // 4. (Optionnel) Si le message contient un fichier (vocal ou image), on le supprime du serveur
+        if (message.mediaUrl) {
+            const cheminMedia = path.join(__dirname, message.mediaUrl);
+            if (fs.existsSync(cheminMedia)) { 
+                try { fs.unlinkSync(cheminMedia); } catch(e) { console.error("Erreur de suppression du fichier média:", e); }
+            }
+        }
+
+        // 5. Suppression effective du message du tableau
+        messages.splice(indexMessage, 1);
         
-        // 4. (Optionnel) Si le message contenait un fichier vocal ou une image, tu peux aussi ajouter la logique ici pour supprimer le fichier du dossier uploads/
-        // if (message.mediaUrl) { fs.unlinkSync(path.join(__dirname, '..', message.mediaUrl)); }
+        // 6. Sauvegarde des changements dans le fichier JSON
+        ecrireDB(fileMessages, messages);
 
         res.status(200).json({ succes: true, message: "Message supprimé avec succès." });
 
