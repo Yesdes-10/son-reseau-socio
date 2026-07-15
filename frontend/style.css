@@ -534,3 +534,10 @@ input:checked + .slider:before { transform: translateX(18px); background-color: 
     .chat-window.active-mobile { display: flex; }
     .message-bubble { max-width: 85%; }
 }
+
+/* Adaptations Messagerie Mobile */
+    .messages-layout { height: calc(100vh - 135px); border: none; border-radius: 0; }
+    .contacts-sidebar { width: 100%; border-right: none; }
+    .chat-window { position: fixed; top: 55px; left: 0; width: 100%; height: calc(100vh - 115px); z-index: 150; display: none; }
+    .chat-window.active-mobile { display: flex; }
+    .message-bubble { max-width: 85%; }
