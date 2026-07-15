@@ -4,8 +4,6 @@ const jwt = require('jsonwebtoken');
 const fs = require('fs');
 const path = require('path');
 const multer = require('multer');
-
-// --- IMPORT WEBSOCKETS ---
 const http = require('http');
 const { Server } = require('socket.io');
 
@@ -13,13 +11,12 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// --- INITIALISATION DU SERVEUR HTTP ET SOCKET.IO ---
+// --- INITIALISATION HTTP & WEBSOCKETS ---
 const server = http.createServer(app);
 const io = new Server(server, {
-    cors: { origin: "*", methods: ["GET", "POST"] }
+    cors: { origin: "*", methods: ["GET", "POST", "DELETE", "PUT"] }
 });
 
-// Servir les fichiers statiques du front et des uploads
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 app.use(express.static(path.join(__dirname, 'frontend')));
 
@@ -29,7 +26,7 @@ const filePosts = path.join(__dirname, 'publications.json');
 const fileMessages = path.join(__dirname, 'messages.json');
 const fileStatuses = path.join(__dirname, 'statuts.json');
 
-// --- CONFIGURATION DE STORAGE (MULTER) ---
+// --- CONFIGURATION MULTER (STORAGE) ---
 const storage = multer.diskStorage({
     destination: (req, file, cb) => {
         const uploadDir = path.join(__dirname, 'uploads');
@@ -37,27 +34,25 @@ const storage = multer.diskStorage({
         cb(null, uploadDir);
     },
     filename: (req, file, cb) => {
-        const nomUnique = Date.now() + '-' + Math.round(Math.random() * 1E9) + path.extname(file.originalname);
-        cb(null, nomUnique);
+        cb(null, Date.now() + '-' + Math.round(Math.random() * 1E9) + path.extname(file.originalname));
     }
 });
 const upload = multer({ storage: storage });
 
-// --- GESTIONNAIRES DE BASE DE DONNÉES ---
+// --- UTILITAIRES BASE DE DONNÉES JSON ---
 function lireDB(fichier) {
     if (!fs.existsSync(fichier)) { fs.writeFileSync(fichier, JSON.stringify([])); return []; }
     try { return JSON.parse(fs.readFileSync(fichier, 'utf8')); } catch(e) { return []; }
 }
 function ecrireDB(fichier, donnees) { fs.writeFileSync(fichier, JSON.stringify(donnees, null, 2)); }
 
-// --- SYSTEME DE NOTIFICATIONS ---
 function ajouterNotification(userId, type, fromPseudo, postId) {
     const utilisateurs = lireDB(fileUsers);
     const user = utilisateurs.find(u => u._id === userId);
     if (user) {
         if (!user.notifications) user.notifications = [];
         user.notifications.unshift({
-            id: Date.now().toString(), type: type, fromPseudo: fromPseudo, postId: postId, read: false, date: new Date()
+            id: Date.now().toString(), type, fromPseudo, postId, read: false, date: new Date()
         });
         ecrireDB(fileUsers, utilisateurs);
     }
@@ -70,14 +65,15 @@ function verifierToken(req, res, next) {
     const token = authHeader.split(" ")[1];
     jwt.verify(token, SECRET_KEY, (err, decoded) => {
         if (err) return res.status(403).json({ erreur: "Token invalide." });
-        req.userId = decoded.id; next();
+        req.userId = decoded.id; 
+        next();
     });
 }
 
 // ============================================================================
-// GESTION TEMPS RÉEL (WEBSOCKETS)
+// TEMPS RÉEL (WEBSOCKETS SOCKET.IO)
 // ============================================================================
-const utilisateursConnectes = {}; // Stocke l'association : userId -> socket.id
+const utilisateursConnectes = {};
 
 io.use((socket, next) => {
     const token = socket.handshake.auth.token;
@@ -93,18 +89,23 @@ io.on('connection', (socket) => {
     utilisateursConnectes[socket.userId] = socket.id;
 
     socket.on('typing', (destinataireId) => {
-        const targetSocket = utilisateursConnectes[destinataireId];
-        if (targetSocket) io.to(targetSocket).emit('userTyping', socket.userId);
+        const target = utilisateursConnectes[destinataireId];
+        if (target) io.to(target).emit('userTyping', socket.userId);
     });
 
     socket.on('stopTyping', (destinataireId) => {
-        const targetSocket = utilisateursConnectes[destinataireId];
-        if (targetSocket) io.to(targetSocket).emit('userStoppedTyping', socket.userId);
+        const target = utilisateursConnectes[destinataireId];
+        if (target) io.to(target).emit('userStoppedTyping', socket.userId);
     });
 
     socket.on('markAsRead', (expediteurId) => {
-        const targetSocket = utilisateursConnectes[expediteurId];
-        if (targetSocket) io.to(targetSocket).emit('messagesReadBy', socket.userId);
+        const target = utilisateursConnectes[expediteurId];
+        if (target) io.to(target).emit('messagesReadBy', socket.userId);
+    });
+
+    socket.on('toggleEphemere', ({ cibleId, actif }) => {
+        const target = utilisateursConnectes[cibleId];
+        if (target) io.to(target).emit('ephemereToggled', { parId: socket.userId, actif });
     });
 
     socket.on('disconnect', () => {
@@ -113,15 +114,15 @@ io.on('connection', (socket) => {
 });
 
 // ============================================================================
-// CONFIGURATION DES ROUTES
+// ROUTES API REST
 // ============================================================================
 
-// --- 1. AUTHENTIFICATION ---
+// 1. AUTHENTIFICATION
 app.post('/auth/inscription', (req, res) => {
     const { pseudo, password } = req.body;
     if (!pseudo || !password) return res.status(400).json({ erreur: "Champs requis." });
     const utilisateurs = lireDB(fileUsers);
-    if (utilisateurs.find(u => u.pseudo.toLowerCase() === pseudo.toLowerCase())) {
+    if (utilisateurs.some(u => u.pseudo.toLowerCase() === pseudo.toLowerCase())) {
         return res.status(400).json({ erreur: "Ce pseudo est déjà pris." });
     }
     utilisateurs.push({ _id: Date.now().toString(), pseudo, password, avatarUrl: null, abonnements: [], notifications: [] });
@@ -138,403 +139,281 @@ app.post('/auth/connexion', (req, res) => {
     res.json({ token, message: "Connecté avec succès." });
 });
 
-// --- 2. GESTION DES UTILISATEURS ---
+// 2. UTILISATEURS & PROFILS
 app.get('/users/me', verifierToken, (req, res) => {
     const utilisateurs = lireDB(fileUsers); const publications = lireDB(filePosts);
     const moi = utilisateurs.find(u => u._id === req.userId);
-    if (!moi) return res.status(404).json({ erreur: "Utilisateur non trouvé" });
+    if (!moi) return res.status(404).json({ erreur: "Utilisateur introuvable" });
     const mesPosts = publications.filter(p => p.auteurId === moi._id).sort((a, b) => new Date(b.date) - new Date(a.date));
-    res.json({ _id: moi._id, pseudo: moi.pseudo, avatarUrl: moi.avatarUrl, abonnementsCount: (moi.abonnements || []).length, mesPosts: mesPosts });
+    res.json({ _id: moi._id, pseudo: moi.pseudo, avatarUrl: moi.avatarUrl, abonnementsCount: (moi.abonnements || []).length, mesPosts });
 });
 
 app.post('/users/me/avatar', verifierToken, upload.single('avatar'), (req, res) => {
-    if (!req.file) return res.status(400).json({ erreur: "Aucun fichier fourni." });
+    if (!req.file) return res.status(400).json({ erreur: "Fichier manquant." });
     const utilisateurs = lireDB(fileUsers); const moi = utilisateurs.find(u => u._id === req.userId);
     if (moi.avatarUrl) {
-        const ancienChemin = path.join(__dirname, moi.avatarUrl);
-        if (fs.existsSync(ancienChemin)) { try { fs.unlinkSync(ancienChemin); } catch(e){} }
+        const anc = path.join(__dirname, moi.avatarUrl);
+        if (fs.existsSync(anc)) { try { fs.unlinkSync(anc); } catch(e){} }
     }
     moi.avatarUrl = `/uploads/${req.file.filename}`;
     ecrireDB(fileUsers, utilisateurs);
-    res.json({ message: "Photo de profil mise à jour !", avatarUrl: moi.avatarUrl });
+    res.json({ message: "Avatar mis à jour !", avatarUrl: moi.avatarUrl });
 });
 
 app.put('/users/me/pseudo', verifierToken, (req, res) => {
     const { nouveauPseudo } = req.body;
-    if (!nouveauPseudo || nouveauPseudo.trim() === "") return res.status(400).json({ erreur: "Le pseudo ne peut pas être vide." });
+    if (!nouveauPseudo || !nouveauPseudo.trim()) return res.status(400).json({ erreur: "Pseudo vide." });
     const utilisateurs = lireDB(fileUsers); const moi = utilisateurs.find(u => u._id === req.userId);
     if (utilisateurs.some(u => u.pseudo.toLowerCase() === nouveauPseudo.trim().toLowerCase() && u._id !== req.userId)) {
-        return res.status(400).json({ erreur: "Ce pseudo est déjà pris." });
+        return res.status(400).json({ erreur: "Pseudo déjà utilisé." });
     }
     moi.pseudo = nouveauPseudo.trim();
     ecrireDB(fileUsers, utilisateurs);
-    res.json({ message: "Pseudo mis à jour avec succès !", nouveauPseudo: moi.pseudo });
+    res.json({ message: "Pseudo modifié !", nouveauPseudo: moi.pseudo });
 });
 
 app.delete('/users/me', verifierToken, (req, res) => {
-    let utilisateurs = lireDB(fileUsers); let publications = lireDB(filePosts);
-    let messages = lireDB(fileMessages); let statuts = lireDB(fileStatuses);
-    const index = utilisateurs.findIndex(u => u._id === req.userId);
-    if (index === -1) return res.status(404).json({ erreur: "Compte introuvable." });
-    const moi = utilisateurs[index];
+    let us = lireDB(fileUsers); let pubs = lireDB(filePosts); let msgs = lireDB(fileMessages); let st = lireDB(fileStatuses);
+    const idx = us.findIndex(u => u._id === req.userId);
+    if (idx === -1) return res.status(404).json({});
+    const moi = us[idx];
 
-    if (moi.avatarUrl) {
-        const ancienChemin = path.join(__dirname, moi.avatarUrl);
-        if (fs.existsSync(ancienChemin)) { try { fs.unlinkSync(ancienChemin); } catch(e){} }
-    }
-    publications.filter(p => p.auteurId === req.userId).forEach(p => {
-        if (p.imageUrl) {
-            const pathImg = path.join(__dirname, p.imageUrl);
-            if (fs.existsSync(pathImg)) { try { fs.unlinkSync(pathImg); } catch(e){} }
-        }
-    });
-    statuts.filter(s => s.userId === req.userId).forEach(s => {
-        if (s.mediaUrl) {
-            const pathImg = path.join(__dirname, s.mediaUrl);
-            if (fs.existsSync(pathImg)) { try { fs.unlinkSync(pathImg); } catch(e){} }
-        }
-    });
+    if (moi.avatarUrl) { const p = path.join(__dirname, moi.avatarUrl); if(fs.existsSync(p)){try{fs.unlinkSync(p)}catch(e){}} }
+    pubs.filter(p => p.auteurId === req.userId).forEach(p => { if(p.imageUrl){const f=path.join(__dirname, p.imageUrl);if(fs.existsSync(f)){try{fs.unlinkSync(f)}catch(e){}}} });
+    st.filter(s => s.userId === req.userId).forEach(s => { if(s.mediaUrl){const f=path.join(__dirname, s.mediaUrl);if(fs.existsSync(f)){try{fs.unlinkSync(f)}catch(e){}}} });
 
-    utilisateurs.splice(index, 1);
-    publications = publications.filter(p => p.auteurId !== req.userId);
-    statuts = statuts.filter(s => s.userId !== req.userId);
-    messages = messages.filter(m => m.fromId !== req.userId && m.toId !== req.userId);
+    us.splice(idx, 1);
+    pubs = pubs.filter(p => p.auteurId !== req.userId);
+    st = st.filter(s => s.userId !== req.userId);
+    msgs = msgs.filter(m => m.fromId !== req.userId && m.toId !== req.userId);
 
-    ecrireDB(fileUsers, utilisateurs); ecrireDB(filePosts, publications);
-    ecrireDB(fileStatuses, statuts); ecrireDB(fileMessages, messages);
-    res.json({ message: "Compte et données supprimés définitivement." });
+    ecrireDB(fileUsers, us); ecrireDB(filePosts, pubs); ecrireDB(fileStatuses, st); ecrireDB(fileMessages, msgs);
+    res.json({ message: "Compte supprimé." });
 });
 
 app.get('/users/search', verifierToken, (req, res) => {
-    const recherche = (req.query.q || "").toLowerCase();
-    const utilisateurs = lireDB(fileUsers);
-    const resultats = utilisateurs.filter(u => u.pseudo.toLowerCase().includes(recherche) && u._id !== req.userId)
-        .map(u => ({ _id: u._id, pseudo: u.pseudo, avatarUrl: u.avatarUrl }));
-    res.json(resultats);
+    const q = (req.query.q || "").toLowerCase();
+    const us = lireDB(fileUsers);
+    res.json(us.filter(u => u.pseudo.toLowerCase().includes(q) && u._id !== req.userId).map(u => ({ _id: u._id, pseudo: u.pseudo, avatarUrl: u.avatarUrl })));
 });
 
 app.get('/users/:id', verifierToken, (req, res) => {
-    const utilisateurs = lireDB(fileUsers); const publications = lireDB(filePosts);
-    const cible = utilisateurs.find(u => u._id === req.params.id);
-    if (!cible) return res.status(404).json({ erreur: "Utilisateur introuvable" });
+    const us = lireDB(fileUsers); const pubs = lireDB(filePosts);
+    const cible = us.find(u => u._id === req.params.id);
+    if (!cible) return res.status(404).json({});
     if (cible._id === req.userId) return res.json({ redirectMe: true });
-    const sesPosts = publications.filter(p => p.auteurId === cible._id).sort((a, b) => new Date(b.date) - new Date(a.date));
-    const moi = utilisateurs.find(u => u._id === req.userId);
+    const sesPosts = pubs.filter(p => p.auteurId === cible._id).sort((a, b) => new Date(b.date) - new Date(a.date));
+    const moi = us.find(u => u._id === req.userId);
     res.json({ _id: cible._id, pseudo: cible.pseudo, avatarUrl: cible.avatarUrl, postsCount: sesPosts.length, estAbonne: moi.abonnements ? moi.abonnements.includes(cible._id) : false, posts: sesPosts });
 });
 
 app.post('/users/:id/follow', verifierToken, (req, res) => {
-    const utilisateurs = lireDB(fileUsers); const moi = utilisateurs.find(u => u._id === req.userId);
-    const aSuivre = utilisateurs.find(u => u._id === req.params.id);
-    if (!aSuivre) return res.status(404).json({ erreur: "Utilisateur cible introuvable." });
+    const us = lireDB(fileUsers); const moi = us.find(u => u._id === req.userId);
     if (!moi.abonnements) moi.abonnements = [];
-    if (!moi.abonnements.includes(aSuivre._id)) { moi.abonnements.push(aSuivre._id); ecrireDB(fileUsers, utilisateurs); }
-    res.json({ message: `Vous suivez maintenant @${aSuivre.pseudo} !` });
+    if (!moi.abonnements.includes(req.params.id)) { moi.abonnements.push(req.params.id); ecrireDB(fileUsers, us); }
+    res.json({ message: "Abonné !" });
 });
 
 app.post('/users/:id/unfollow', verifierToken, (req, res) => {
-    const utilisateurs = lireDB(fileUsers); const moi = utilisateurs.find(u => u._id === req.userId);
-    if (moi.abonnements) {
-        const index = moi.abonnements.indexOf(req.params.id);
-        if (index !== -1) moi.abonnements.splice(index, 1);
-        ecrireDB(fileUsers, utilisateurs);
-    }
-    res.json({ message: "Vous ne suivez plus cet utilisateur." });
+    const us = lireDB(fileUsers); const moi = us.find(u => u._id === req.userId);
+    if (moi.abonnements) { const i = moi.abonnements.indexOf(req.params.id); if(i !== -1){ moi.abonnements.splice(i,1); ecrireDB(fileUsers, us); } }
+    res.json({ message: "Désabonné." });
 });
 
-// --- 3. NOTIFICATIONS ---
+// 3. NOTIFICATIONS
 app.get('/notifications', verifierToken, (req, res) => {
-    const utilisateurs = lireDB(fileUsers); const moi = utilisateurs.find(u => u._id === req.userId);
-    res.json(moi ? (moi.notifications || []) : []);
+    const u = lireDB(fileUsers).find(user => user._id === req.userId);
+    res.json(u ? (u.notifications || []) : []);
 });
-
 app.post('/notifications/read', verifierToken, (req, res) => {
-    const utilisateurs = lireDB(fileUsers); const moi = utilisateurs.find(u => u._id === req.userId);
-    if (moi && moi.notifications) { moi.notifications.forEach(n => n.read = true); ecrireDB(fileUsers, utilisateurs); }
-    res.json({ message: "Notifications lues" });
+    const us = lireDB(fileUsers); const moi = us.find(u => u._id === req.userId);
+    if (moi && moi.notifications) { moi.notifications.forEach(n => n.read = true); ecrireDB(fileUsers, us); }
+    res.json({});
 });
 
-// --- 4. MESSAGERIE (CHATS) ---
+// 4. MESSAGERIE (EXCELLENCE & PARAMÈTRES)
 app.get('/messages/contacts', verifierToken, (req, res) => {
-    const utilisateurs = lireDB(fileUsers); const messages = lireDB(fileMessages); const moiId = req.userId;
-    let contactsMap = {};
-    utilisateurs.forEach(u => {
-        if (u._id !== moiId) contactsMap[u._id] = { _id: u._id, pseudo: u.pseudo, avatarUrl: u.avatarUrl, dernierMessage: null, dateDernierMessage: 0 };
-    });
-    messages.forEach(m => {
+    const us = lireDB(fileUsers); const msgs = lireDB(fileMessages); const moiId = req.userId;
+    let map = {};
+    us.forEach(u => { if(u._id !== moiId) map[u._id] = { _id: u._id, pseudo: u.pseudo, avatarUrl: u.avatarUrl, dernierMessage: null, dateDernierMessage: 0 }; });
+    msgs.forEach(m => {
         if (m.fromId === moiId || m.toId === moiId) {
-            const interlocuteurId = m.fromId === moiId ? m.toId : m.fromId;
-            if (contactsMap[interlocuteurId]) {
-                const timestampMsg = new Date(m.date).getTime();
-                if (timestampMsg > contactsMap[interlocuteurId].dateDernierMessage) {
-                    contactsMap[interlocuteurId].dernierMessage = m.mediaType === 'audio' ? "🎤 Message vocal" : m.texte;
-                    contactsMap[interlocuteurId].dateDernierMessage = timestampMsg;
+            const autreId = m.fromId === moiId ? m.toId : m.fromId;
+            if (map[autreId]) {
+                const t = new Date(m.date).getTime();
+                if (t > map[autreId].dateDernierMessage) {
+                    map[autreId].dernierMessage = m.mediaType === 'audio' ? "🎤 Message vocal" : m.texte;
+                    map[autreId].dateDernierMessage = t;
                 }
             }
         }
     });
-    res.json(Object.values(contactsMap).sort((a, b) => b.dateDernierMessage - a.dateDernierMessage));
+    res.json(Object.values(map).sort((a, b) => b.dateDernierMessage - a.dateDernierMessage));
 });
 
 app.get('/messages/:userId', verifierToken, (req, res) => {
-    const messages = lireDB(fileMessages); const cibleId = req.params.userId; const moiId = req.userId;
+    const msgs = lireDB(fileMessages); const cibleId = req.params.userId; const moiId = req.userId;
     let modifie = false;
-    messages.forEach(m => {
+    msgs.forEach(m => {
         if (m.fromId === cibleId && m.toId === moiId && m.status !== 'read') { m.status = 'read'; modifie = true; }
     });
-    if (modifie) ecrireDB(fileMessages, messages);
-    const discussion = messages.filter(m => (m.fromId === moiId && m.toId === cibleId) || (m.fromId === cibleId && m.toId === moiId)).sort((a, b) => new Date(a.date) - new Date(b.date));
+    if (modifie) ecrireDB(fileMessages, msgs);
+    const discussion = msgs.filter(m => (m.fromId === moiId && m.toId === cibleId) || (m.fromId === cibleId && m.toId === moiId)).sort((a, b) => new Date(a.date) - new Date(b.date));
     res.json(discussion);
 });
 
-// --- SUPPRESSION D'UN MESSAGE ---
-app.delete('/messages/:id', verifierToken, (req, res) => {
-    try {
-        const messageId = req.params.id;
-        const userId = req.userId; // Utilisation de req.userId tel que défini dans verifierToken
-
-        // 1. On charge la base de données des messages
-        let messages = lireDB(fileMessages);
-        
-        // 2. On cherche l'index du message correspondant
-        const indexMessage = messages.findIndex(m => m.id === messageId);
-        
-        if (indexMessage === -1) {
-            return res.status(404).json({ erreur: "Message introuvable." });
-        }
-
-        const message = messages[indexMessage];
-
-        // 3. Sécurité : on vérifie que l'utilisateur a le droit de supprimer ce message
-        // Seuls l'expéditeur ou le destinataire peuvent le faire
-        if (message.fromId !== userId && message.toId !== userId) {
-            return res.status(403).json({ erreur: "Tu n'es pas autorisé à supprimer ce message." });
-        }
-
-        // 4. (Optionnel) Si le message contient un fichier (vocal ou image), on le supprime du serveur
-        if (message.mediaUrl) {
-            const cheminMedia = path.join(__dirname, message.mediaUrl);
-            if (fs.existsSync(cheminMedia)) { 
-                try { fs.unlinkSync(cheminMedia); } catch(e) { console.error("Erreur de suppression du fichier média:", e); }
-            }
-        }
-
-        // 5. Suppression effective du message du tableau
-        messages.splice(indexMessage, 1);
-        
-        // 6. Sauvegarde des changements dans le fichier JSON
-        ecrireDB(fileMessages, messages);
-
-        res.status(200).json({ succes: true, message: "Message supprimé avec succès." });
-
-    } catch (erreur) {
-        console.error("Erreur API suppression message :", erreur);
-        res.status(500).json({ erreur: "Erreur interne du serveur lors de la suppression." });
-    }
-});
-
+// Envoi d'un message (Texte, Fichier Audio, Option Éphémère)
 app.post('/messages/:userId', verifierToken, upload.single('media'), (req, res) => {
-    const texte = req.body.texte;
+    const { texte, ephemere } = req.body;
     const cibleId = req.params.userId;
     let mediaUrl = null; let mediaType = null;
     if (req.file) {
         mediaUrl = `/uploads/${req.file.filename}`;
         mediaType = req.file.mimetype.startsWith('audio/') ? 'audio' : 'image';
     }
-    if ((!texte || !texte.trim()) && !mediaUrl) return res.status(400).json({ erreur: "Le message ne peut pas être vide." });
+    if ((!texte || !texte.trim()) && !mediaUrl) return res.status(400).json({ erreur: "Message vide." });
 
-    const messages = lireDB(fileMessages);
+    const msgs = lireDB(fileMessages);
     const nouveauMsg = {
         id: Date.now().toString(), fromId: req.userId, toId: cibleId,
-        texte: texte ? texte.trim() : "", mediaUrl: mediaUrl, mediaType: mediaType, status: 'delivered', date: new Date()
+        texte: texte ? texte.trim() : "", mediaUrl, mediaType,
+        status: 'delivered', ephemere: ephemere === 'true', date: new Date()
     };
-    messages.push(nouveauMsg);
-    ecrireDB(fileMessages, messages);
+    msgs.push(nouveauMsg);
+    ecrireDB(fileMessages, msgs);
 
-    // TEMPS RÉEL VIA WEBSOCKETS !
-    const destinataireSocket = utilisateursConnectes[cibleId];
-    if (destinataireSocket) io.to(destinataireSocket).emit('newMessage', nouveauMsg);
+    const targetSocket = utilisateursConnectes[cibleId];
+    if (targetSocket) io.to(targetSocket).emit('newMessage', nouveauMsg);
 
     res.status(201).json(nouveauMsg);
 });
 
-// --- 5. PUBLICATIONS (FEED) ---
+// Suppression d'un message individuel
+app.delete('/messages/:id', verifierToken, (req, res) => {
+    try {
+        let msgs = lireDB(fileMessages);
+        const idx = msgs.findIndex(m => m.id === req.params.id);
+        if (idx === -1) return res.status(404).json({ erreur: "Introuvable." });
+
+        const m = msgs[idx];
+        if (m.fromId !== req.userId && m.toId !== req.userId) {
+            return res.status(403).json({ erreur: "Non autorisé." });
+        }
+
+        if (m.mediaUrl) {
+            const pathMedia = path.join(__dirname, m.mediaUrl);
+            if (fs.existsSync(pathMedia)) { try { fs.unlinkSync(pathMedia); } catch(e){} }
+        }
+
+        msgs.splice(idx, 1);
+        ecrireDB(fileMessages, msgs);
+
+        // Notifier la suppression en direct
+        const autreId = m.fromId === req.userId ? m.toId : m.fromId;
+        const targetSocket = utilisateursConnectes[autreId];
+        if (targetSocket) io.to(targetSocket).emit('messageDeleted', req.params.id);
+
+        res.json({ succes: true });
+    } catch(e) { res.status(500).json({ erreur: "Erreur serveur." }); }
+});
+
+// Vider toute une conversation
+app.delete('/messages/clear/:interlocuteurId', verifierToken, (req, res) => {
+    try {
+        const moiId = req.userId; const autreId = req.params.interlocuteurId;
+        let msgs = lireDB(fileMessages);
+        const restants = msgs.filter(m => !((m.fromId === moiId && m.toId === autreId) || (m.fromId === autreId && m.toId === moiId)));
+        ecrireDB(fileMessages, restants);
+
+        const targetSocket = utilisateursConnectes[autreId];
+        if (targetSocket) io.to(targetSocket).emit('chatCleared', moiId);
+
+        res.json({ succes: true });
+    } catch(e) { res.status(500).json({ erreur: "Erreur serveur." }); }
+});
+
+// 5. PUBLICATIONS (FEED)
 app.post('/posts', verifierToken, upload.single('image'), (req, res) => {
     const { contenu } = req.body;
-    if (!contenu && !req.file) return res.status(400).json({ erreur: "Le post ne peut pas être vide." });
-    const publications = lireDB(filePosts);
-    let mediaType = null;
-    if (req.file) mediaType = req.file.mimetype.startsWith('video/') ? 'video' : 'image';
-    const nouveauPost = {
+    if (!contenu && !req.file) return res.status(400).json({});
+    const pubs = lireDB(filePosts);
+    pubs.push({
         _id: Date.now().toString(), auteurId: req.userId, contenu: contenu || "",
-        imageUrl: req.file ? `/uploads/${req.file.filename}` : null, mediaType: mediaType, likes: [], commentaires: [], date: new Date()
-    };
-    publications.push(nouveauPost);
-    ecrireDB(filePosts, publications);
-    res.status(201).json({ message: "Publié !" });
+        imageUrl: req.file ? `/uploads/${req.file.filename}` : null,
+        mediaType: req.file ? (req.file.mimetype.startsWith('video/') ? 'video' : 'image') : null,
+        likes: [], commentaires: [], date: new Date()
+    });
+    ecrireDB(filePosts, pubs);
+    res.status(201).json({});
 });
 
 app.get('/feed', verifierToken, (req, res) => {
-    const utilisateurs = lireDB(fileUsers); const publications = lireDB(filePosts);
-    const moi = utilisateurs.find(u => u._id === req.userId);
+    const us = lireDB(fileUsers); const pubs = lireDB(filePosts);
+    const moi = us.find(u => u._id === req.userId);
     if (!moi) return res.json([]);
-    const postsAafficher = publications.filter(p => p.auteurId === moi._id || (moi.abonnements && moi.abonnements.includes(p.auteurId)));
-    postsAafficher.sort((a, b) => new Date(b.date) - new Date(a.date));
-    const postsComplets = postsAafficher.map(post => {
-        const auteur = utilisateurs.find(u => u._id === post.auteurId);
-        return { ...post, auteur: { pseudo: auteur ? auteur.pseudo : "Inconnu", avatarUrl: auteur ? auteur.avatarUrl : null }, estLeMien: post.auteurId === req.userId };
-    });
-    res.json(postsComplets);
+    const valid = pubs.filter(p => p.auteurId === moi._id || (moi.abonnements && moi.abonnements.includes(p.auteurId))).sort((a, b) => new Date(b.date) - new Date(a.date));
+    res.json(valid.map(p => { const aut = us.find(u => u._id === p.auteurId); return { ...p, auteur: { pseudo: aut ? aut.pseudo : "Inconnu", avatarUrl: aut ? aut.avatarUrl : null }, estLeMien: p.auteurId === req.userId }; }));
 });
 
 app.post('/posts/:id/like', verifierToken, (req, res) => {
-    const publications = lireDB(filePosts); const utilisateurs = lireDB(fileUsers);
-    const post = publications.find(p => p._id === req.params.id);
-    if (!post) return res.status(404).json({ erreur: "Post introuvable." });
-    const moi = utilisateurs.find(u => u._id === req.userId);
-    const index = post.likes.indexOf(req.userId);
-    if (index === -1) {
-        post.likes.push(req.userId);
-        if (post.auteurId !== req.userId) ajouterNotification(post.auteurId, 'like', moi.pseudo, post._id);
-    } else {
-        post.likes.splice(index, 1);
-    }
-    ecrireDB(filePosts, publications);
-    res.json({ message: "Like mis à jour" });
+    const pubs = lireDB(filePosts); const p = pubs.find(x => x._id === req.params.id);
+    if(p) { const idx = p.likes.indexOf(req.userId); if(idx === -1) { p.likes.push(req.userId); if(p.auteurId !== req.userId) ajouterNotification(p.auteurId, 'like', lireDB(fileUsers).find(u=>u._id===req.userId).pseudo, p._id); } else p.likes.splice(idx,1); ecrireDB(filePosts, pubs); }
+    res.json({});
 });
 
 app.post('/posts/:id/comment', verifierToken, (req, res) => {
-    const publications = lireDB(filePosts); const utilisateurs = lireDB(fileUsers);
-    const post = publications.find(p => p._id === req.params.id);
-    if (!post) return res.status(404).json({ erreur: "Post introuvable" });
-    const moi = utilisateurs.find(u => u._id === req.userId);
-    const { texte } = req.body;
-    if (!texte || !texte.trim()) return res.status(400).json({ erreur: "Texte vide." });
-    post.commentaires.push({ id: Date.now().toString(), auteur: moi.pseudo, texte: texte.trim(), dateCreation: new Date() });
-    if (post.auteurId !== req.userId) ajouterNotification(post.auteurId, 'comment', moi.pseudo, post._id);
-    ecrireDB(filePosts, publications);
-    res.status(201).json({ message: "Commentaire ajouté" });
+    const pubs = lireDB(filePosts); const p = pubs.find(x => x._id === req.params.id);
+    const moi = lireDB(fileUsers).find(u => u._id === req.userId);
+    if(p && req.body.texte) { p.commentaires.push({ id: Date.now().toString(), auteur: moi.pseudo, texte: req.body.texte.trim(), dateCreation: new Date() }); if(p.auteurId !== req.userId) ajouterNotification(p.auteurId, 'comment', moi.pseudo, p._id); ecrireDB(filePosts, pubs); }
+    res.status(201).json({});
 });
 
 app.delete('/posts/:id', verifierToken, (req, res) => {
-    let publications = lireDB(filePosts);
-    const index = publications.findIndex(p => p._id === req.params.id);
-    if (index === -1) return res.status(404).json({ erreur: "Post introuvable." });
-    if (publications[index].auteurId !== req.userId) return res.status(403).json({ erreur: "Interdit." });
-    if (publications[index].imageUrl) {
-        const cheminImage = path.join(__dirname, publications[index].imageUrl);
-        if (fs.existsSync(cheminImage)) { try { fs.unlinkSync(cheminImage); } catch(e){} }
-    }
-    publications = publications.filter(x => x._id !== req.params.id);
-    ecrireDB(filePosts, publications);
-    res.json({ message: "Post supprimé !" });
+    let pubs = lireDB(filePosts); const p = pubs.find(x => x._id === req.params.id);
+    if(p && p.auteurId === req.userId) { if(p.imageUrl){const f=path.join(__dirname,p.imageUrl);if(fs.existsSync(f)){try{fs.unlinkSync(f)}catch(e){}}} pubs = pubs.filter(x => x._id !== req.params.id); ecrireDB(filePosts, pubs); }
+    res.json({});
 });
 
-// --- 6. GESTION DES STATUTS PRIVÉS ---
+// 6. STATUTS PRIVÉS 24H
 app.post('/statuses', verifierToken, upload.single('statusMedia'), (req, res) => {
-    const { texte } = req.body;
-    if (!texte && !req.file) return res.status(400).json({ erreur: "Le statut ne peut pas être vide." });
-    const utilisateurs = lireDB(fileUsers); const moi = utilisateurs.find(u => u._id === req.userId);
-    const statuts = lireDB(fileStatuses);
-    const nouveauStatut = {
-        _id: Date.now().toString(), userId: req.userId, author: moi.pseudo, avatarUrl: moi.avatarUrl,
-        type: req.file ? 'image' : 'text', mediaUrl: req.file ? `/uploads/${req.file.filename}` : null, text: texte || "", date: new Date(), vulespar: []
-    };
-    statuts.unshift(nouveauStatut);
-    ecrireDB(fileStatuses, statuts);
-    res.status(201).json(nouveauStatut);
+    const moi = lireDB(fileUsers).find(u => u._id === req.userId);
+    const st = lireDB(fileStatuses);
+    const n = { _id: Date.now().toString(), userId: req.userId, author: moi.pseudo, avatarUrl: moi.avatarUrl, type: req.file ? 'image':'text', mediaUrl: req.file ? `/uploads/${req.file.filename}`:null, text: req.body.texte || "", date: new Date(), vulespar: [] };
+    st.unshift(n); ecrireDB(fileStatuses, st);
+    res.status(201).json(n);
 });
 
 app.get('/statuses', verifierToken, (req, res) => {
-    const utilisateurs = lireDB(fileUsers); const statutsAll = lireDB(fileStatuses);
-    const moi = utilisateurs.find(u => u._id === req.userId);
-    if (!moi) return res.json([]);
-    const maintenant = new Date().getTime(); const limite24h = 24 * 60 * 60 * 1000;
-    const statutsValides = statutsAll.filter(s => {
-        const estRecent = (maintenant - new Date(s.date).getTime()) < limite24h;
-        const estDeMesContacts = s.userId === req.userId || (moi.abonnements && moi.abonnements.includes(s.userId));
-        return estRecent && estDeMesContacts;
-    });
-    const rendus = statutsValides.map(s => {
-        const auteur = utilisateurs.find(u => u._id === s.userId);
-        return { ...s, author: auteur ? auteur.pseudo : s.author, avatarUrl: auteur ? auteur.avatarUrl : s.avatarUrl, read: s.vulespar ? s.vulespar.includes(req.userId) : false };
-    });
-    res.json(rendus);
+    const us = lireDB(fileUsers); const moi = us.find(u => u._id === req.userId);
+    if(!moi) return res.json([]);
+    const m = new Date().getTime();
+    const valides = lireDB(fileStatuses).filter(s => (m - new Date(s.date).getTime()) < 86400000 && (s.userId === req.userId || (moi.abonnements && moi.abonnements.includes(s.userId))));
+    res.json(valides.map(s => { const aut = us.find(u => u._id === s.userId); return { ...s, author: aut ? aut.pseudo : s.author, avatarUrl: aut ? aut.avatarUrl : s.avatarUrl, read: (s.vulespar || []).includes(req.userId) }; }));
 });
 
 app.post('/statuses/:id/read', verifierToken, (req, res) => {
-    const statuts = lireDB(fileStatuses); const statut = statuts.find(s => s._id === req.params.id);
-    if (statut) {
-        if (!statut.vulespar) statut.vulespar = [];
-        if (!statut.vulespar.includes(req.userId)) { statut.vulespar.push(req.userId); ecrireDB(fileStatuses, statuts); }
-    }
-    res.json({ message: "Marqué comme lu" });
+    const st = lireDB(fileStatuses); const s = st.find(x => x._id === req.params.id);
+    if(s) { if(!s.vulespar) s.vulespar = []; if(!s.vulespar.includes(req.userId)) { s.vulespar.push(req.userId); ecrireDB(fileStatuses, st); } }
+    res.json({});
 });
 
 app.delete('/statuses/:id', verifierToken, (req, res) => {
-    let statuts = lireDB(fileStatuses); const index = statuts.findIndex(s => s._id === req.params.id);
-    if (index === -1) return res.status(404).json({ erreur: "Statut introuvable." });
-    if (statuts[index].userId !== req.userId) return res.status(403).json({ erreur: "Interdit." });
-    if (statuts[index].mediaUrl) {
-        const cheminImage = path.join(__dirname, statuts[index].mediaUrl);
-        if (fs.existsSync(cheminImage)) { try { fs.unlinkSync(cheminImage); } catch(e){} }
-    }
-    statuts = statuts.filter(x => x._id !== req.params.id);
-    ecrireDB(fileStatuses, statuts);
-    res.json({ message: "Statut supprimé !" });
+    let st = lireDB(fileStatuses); const s = st.find(x => x._id === req.params.id);
+    if(s && s.userId === req.userId) { if(s.mediaUrl){const f=path.join(__dirname,s.mediaUrl);if(fs.existsSync(f)){try{fs.unlinkSync(f)}catch(e){}}} st = st.filter(x => x._id !== req.params.id); ecrireDB(fileStatuses, st); }
+    res.json({});
 });
 
-// --- VIDER TOUTE UNE CONVERSATION ---
-app.delete('/messages/clear/:interlocuteurId', verifierToken, (req, res) => {
-    try {
-        const moiId = req.userId;
-        const autreId = req.params.interlocuteurId;
-
-        let messages = lireDB(fileMessages);
-
-        // On filtre en conservant uniquement les messages qui NE CONCERNENT PAS ces deux utilisateurs entre eux
-        const messagesRestants = messages.filter(m => {
-            const estDansLaDiscussion = (m.fromId === moiId && m.toId === autreId) || (m.fromId === autreId && m.toId === moiId);
-            return !estDansLaDiscussion; // On garde tout le reste
-        });
-
-        // Sauvegarde dans la base de données JSON
-        ecrireDB(fileMessages, messagesRestants);
-
-        // Optionnel : Prévenir l'interlocuteur en temps réel si connecté
-        const targetSocket = utilisateursConnectes[autreId];
-        if (targetSocket) {
-            io.to(targetSocket).emit('chatCleared', moiId);
-        }
-
-        res.json({ succes: true, message: "Historique de discussion supprimé." });
-    } catch (e) {
-        console.error("Erreur vidage chat :", e);
-        res.status(500).json({ erreur: "Erreur serveur." });
-    }
-});
-
-// --- NETTOYAGE AUTOMATIQUE DES MESSAGES ÉPHÉMÈRES (Toutes les heures) ---
+// --- CRON JOB : NETTOYAGE AUTOMATIQUE DES MESSAGES ÉPHÉMÈRES (Toutes les heures) ---
 setInterval(() => {
-    let messages = lireDB(fileMessages);
-    const limite24h = Date.now() - (24 * 60 * 60 * 1000);
-    let messagesModifies = false;
-
-    // Si tu ajoutes une propriété "ephemere: true" lors de la création d'un message
-    messages = messages.filter(m => {
-        if (m.ephemere && new Date(m.date).getTime() < limite24h) {
-            messagesModifies = true;
-            return false; // On supprime le message
-        }
-        return true; // On garde
-    });
-
-    if (messagesModifies) {
-        ecrireDB(fileMessages, messages);
-        console.log("⏱️ Nettoyage automatique : anciens messages éphémères supprimés.");
+    let msgs = lireDB(fileMessages);
+    const limite = Date.now() - (24 * 60 * 60 * 1000);
+    const initLen = msgs.length;
+    msgs = msgs.filter(m => !(m.ephemere && new Date(m.date).getTime() < limite));
+    if (msgs.length !== initLen) {
+        ecrireDB(fileMessages, msgs);
+        console.log("⏱️ Nettoyage : anciens messages éphémères supprimés.");
     }
-}, 60 * 60 * 1000); // Exécuté toutes les 60 minutes
+}, 3600000);
 
-// --- EXECUTION DU SERVEUR VIA HTTP (REQUIS POUR SOCKET.IO) ---
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log(`Serveur WebSockets et API en ligne sur le port ${PORT}`));
+server.listen(PORT, () => console.log(`Serveur WebSockets en ligne sur le port ${PORT}`));

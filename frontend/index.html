@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Jo Socio</title>
     
-    <!-- CONFIGURATION PWA -->
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#121212">
     <link rel="apple-touch-icon" href="icon-192.png">
@@ -14,29 +13,10 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.1/cropper.min.css">
     <link rel="stylesheet" href="style.css">
-    
-    <style>
-        .app-header-mobile {
-            display: flex; justify-content: space-between; align-items: center;
-            padding: 12px 20px; background-color: var(--bg-dark, #0b0b0d);
-            border-bottom: 1px solid var(--border-color, #1f1f24);
-            position: sticky; top: 0; z-index: 1000;
-        }
-        .app-header-mobile .header-logo { font-size: 20px; font-weight: 700; color: var(--text-main, #fff); letter-spacing: -0.5px; }
-        .app-header-mobile .header-actions { display: flex; align-items: center; gap: 22px; }
-        .app-header-mobile .icon-btn-top { background: none; border: none; color: #fff; font-size: 20px; cursor: pointer; padding: 0; }
-        .app-header-mobile .notif-box { position: relative; display: flex; align-items: center; cursor: pointer; }
-        .app-header-mobile .badge-top { 
-            position: absolute; top: -6px; right: -8px; background: var(--danger, #e54d42); 
-            color: white; font-size: 10px; font-weight: 700; padding: 1px 5px; 
-            border-radius: 10px; border: 2px solid var(--bg-dark, #0b0b0d); display: none;
-        }
-    </style>
 </head>
 <body>
     <div id="app">
         
-        <!-- ÉCRAN DE CONNEXION / INSCRIPTION -->
         <div id="auth-screen">
             <div class="logo-auth"><span style="color: #dfb142;">•</span> Jo Socio</div>
             <h2>Bienvenue</h2>
@@ -47,7 +27,6 @@
             <p id="auth-message"></p>
         </div>
 
-        <!-- ÉCRAN PRINCIPAL -->
         <div id="main-screen" style="display: none;">
             
             <header class="app-header-mobile mobile-only">
@@ -66,7 +45,7 @@
                 <aside class="sidebar desktop-only">
                     <div class="logo"><span style="color: #dfb142;">•</span> Jo Socio</div>
                     <div class="current-user-widget" style="display: flex; align-items: center; gap: 10px; margin-bottom: 25px; padding: 10px; background: var(--panel-dark); border-radius: 8px;">
-                        <img id="sidebar-avatar" src="https://www.w3schools.com/howto/img_avatar.png" alt="Avatar" class="avatar-round-mini">
+                        <img id="sidebar-avatar" src="https://www.w3schools.com/howto/img_avatar.png" class="avatar-round-mini">
                         <span id="sidebar-pseudo" style="font-weight: 600; font-size: 14px;">@Moi</span>
                     </div>
 
@@ -90,18 +69,17 @@
 
                 <main class="content-area">
                     
-                    <!-- FEED -->
                     <div id="feed-section">
                         <h2 class="section-title desktop-only">Fil d'actualité</h2>
                         <div class="create-post">
                             <div class="post-input-wrapper">
-                                <img id="feed-creator-avatar" src="https://www.w3schools.com/howto/img_avatar.png" alt="Avatar" class="avatar-round-mini">
+                                <img id="feed-creator-avatar" src="https://www.w3schools.com/howto/img_avatar.png" class="avatar-round-mini">
                                 <textarea id="post-content" placeholder="Que voulez-vous partager ?"></textarea>
                             </div>
                             <div id="preview-container" style="display: none; position: relative; margin-bottom: 15px;">
-                                <img id="image-preview" src="" alt="Aperçu" style="display: none; max-width: 100%; max-height: 200px; border-radius: 8px;">
+                                <img id="image-preview" src="" style="display: none; max-width: 100%; max-height: 200px; border-radius: 8px;">
                                 <video id="video-preview" controls style="display: none; max-width: 100%; max-height: 200px; border-radius: 8px;"></video>
-                                <button onclick="annulerImage()" style="position: absolute; top: 10px; left: 10px; background: rgba(0,0,0,0.7); color: white; border-radius: 50%; width: 30px; height: 30px; padding:0; border:none; cursor:pointer;">✕</button>
+                                <button onclick="annulerImage()" style="position: absolute; top: 10px; left: 10px; background: rgba(0,0,0,0.7); color: white; border-radius: 50%; width: 30px; height: 30px; border:none; cursor:pointer;">✕</button>
                             </div>
                             <div class="post-actions" style="display: flex; justify-content: space-between; align-items: center;">
                                 <label for="post-image" class="btn-secondary" style="padding: 8px 15px; font-size: 13px;"><i class="fa-solid fa-photo-film"></i> Image / Vidéo</label>
@@ -113,11 +91,10 @@
                         <div id="feed-container"></div>
                     </div>
 
-                    <!-- PROFIL -->
                     <div id="profile-section" style="display: none;">
                         <div class="profile-header">
                             <div class="profile-avatar-container" style="position: relative; width: 110px; margin: 0 auto 20px;">
-                                <img id="profile-avatar-img" src="https://www.w3schools.com/howto/img_avatar.png" alt="Avatar Profil" class="profile-avatar-large">
+                                <img id="profile-avatar-img" src="https://www.w3schools.com/howto/img_avatar.png" class="profile-avatar-large">
                                 <label id="change-avatar-label" for="avatar-file-input" class="avatar-edit-overlay" style="display:none;"><i class="fa-solid fa-camera"></i></label>
                                 <input type="file" id="avatar-file-input" accept="image/*" style="display:none;" onchange="ouvrirRecadrageAvatar(event)">
                             </div>
@@ -130,122 +107,102 @@
                         <div id="profile-posts-container"></div>
                     </div>
 
-                    <!-- MESSAGES -->
                     <div id="messages-section" style="display: none;">
                         <h2 class="section-title desktop-only">Messagerie Privée</h2>
+                        
                         <div class="messages-layout" id="mobile-messages-layout">
                             
                             <div class="contacts-sidebar" id="contacts-sidebar">
                                 <div class="statuses-scroll-bar">
                                     <div class="status-bubble my-status" onclick="ouvrirModaleCreationStatut()">
                                         <div class="status-avatar-box">
-                                            <img id="my-status-avatar-img" src="https://www.w3schools.com/howto/img_avatar.png" alt="Moi">
+                                            <img id="my-status-avatar-img" src="https://www.w3schools.com/howto/img_avatar.png">
                                             <span class="status-plus-badge"><i class="fa-solid fa-plus"></i></span>
                                         </div>
                                         <span class="status-name">Mon statut</span>
                                     </div>
                                     <div id="contacts-statuses-container" class="friends-statuses-list"></div>
                                 </div>
-                                <div style="padding: 15px 15px 5px; font-size: 11px; color: var(--text-muted); font-weight: 600; letter-spacing: 0.5px;">DISCUSSIONS</div>
+                                <div style="padding: 15px 15px 5px; font-size: 11px; color: var(--text-muted); font-weight: 600;">DISCUSSIONS</div>
                                 <div id="contacts-container"></div>
                             </div>
 
-                            <div class="chat-window" id="chat-window">
-                                <!-- EN-TÊTE DE LA DISCUSSION -->
+                            <div class="chat-window" id="chat-window" style="position: relative; overflow: hidden;">
+                                
                                 <div id="chat-header" class="chat-header-pro">
                                     <div class="chat-header-user-info">
-                                        <button class="mobile-only btn-icon" onclick="fermerChatMobile()">
-                                            <i class="fa-solid fa-arrow-left"></i>
-                                        </button>
-                                        <img id="chat-header-avatar" src="/default-avatar.png" class="avatar-sm" style="display:none;">
+                                        <button class="mobile-only btn-icon" onclick="fermerChatMobile()" style="background:transparent; border:none; color:var(--gold); padding:0; margin-right:10px;"><i class="fa-solid fa-arrow-left"></i></button>
                                         <div class="chat-header-text-block">
                                             <span id="chat-header-text" class="contact-name">Sélectionnez un contact</span>
-                                            <span id="chat-header-status" class="contact-status-sub">en ligne</span>
+                                            <span id="chat-header-status" class="contact-status-sub" style="display:none;">en ligne</span>
                                         </div>
                                     </div>
-                                    
-                                    <!-- Bouton pour ouvrir le panneau de paramètres professionnels -->
                                     <div class="chat-header-actions">
-                                        <button class="btn-icon" onclick="toggleChatSettings()" title="Paramètres de la discussion">
+                                        <button class="btn-icon" onclick="toggleChatSettings()" title="Paramètres de la discussion" style="background:transparent; border:none; color:#fff; font-size:18px;">
                                             <i class="fa-solid fa-sliders"></i>
                                         </button>
                                     </div>
                                 </div>
 
-                                <!-- PANNEAU LATÉRAL DE PARAMÈTRES (DRAWER) -->
                                 <div id="chat-settings-drawer" class="chat-drawer hidden">
                                     <div class="drawer-header">
-                                        <h3>Paramètres de la discussion</h3>
+                                        <h3>Paramètres du chat</h3>
                                         <button class="btn-close" onclick="toggleChatSettings()"><i class="fa-solid fa-xmark"></i></button>
                                     </div>
-                                    
                                     <div class="drawer-body">
-                                        <!-- Section 1 : Design & Apparence -->
                                         <div class="settings-section">
                                             <h4><i class="fa-solid fa-wand-magic-sparkles"></i> Apparence</h4>
                                             <div class="setting-item">
-                                                <label>Couleur des messages</label>
-                                                <input type="color" id="chat-color-picker" onchange="changerCouleurChat(this.value)">
+                                                <label>Couleur des bulles</label>
+                                                <input type="color" id="chat-color-picker" onchange="changerCouleurChat(this.value)" style="width:35px; height:35px; padding:0; border:none; border-radius:50%; cursor:pointer;">
                                             </div>
                                             <div class="setting-item">
                                                 <label>Fond d'écran</label>
-                                                <select id="chat-bg-select" onchange="changerFondChat(this.value)">
-                                                    <option value="default">Par défaut (Sombre)</option>
-                                                    <option value="geometric">Géométrique Moderne</option>
+                                                <select id="chat-bg-select" onchange="changerFondChat(this.value)" style="width:130px; padding:5px; font-size:12px;">
+                                                    <option value="default">Par défaut</option>
+                                                    <option value="geometric">Géométrique</option>
                                                     <option value="stars">Nuit Étoilée</option>
-                                                    <option value="gradient">Dégradé Cyberpunk</option>
+                                                    <option value="gradient">Cyberpunk</option>
                                                 </select>
                                             </div>
                                         </div>
 
-                                        <!-- Section 2 : Confidentialité (Le "Jamais Vu") -->
                                         <div class="settings-section">
                                             <h4><i class="fa-solid fa-user-shield"></i> Confidentialité</h4>
-                                            <div class="setting-item toggle-item">
+                                            <div class="setting-item">
                                                 <div>
                                                     <label>Messages Éphémères</label>
-                                                    <span class="setting-desc">Suppression auto après 24h</span>
+                                                    <span class="setting-desc">Suppression après 24h</span>
                                                 </div>
                                                 <label class="switch">
                                                     <input type="checkbox" id="toggle-ephemeral" onchange="toggleEphemere(this.checked)">
-                                                    <span class="slider round"></span>
+                                                    <span class="slider"></span>
                                                 </label>
                                             </div>
-                                            <div class="setting-item toggle-item">
+                                            <div class="setting-item">
                                                 <div>
                                                     <label>Mode Silence</label>
-                                                    <span class="setting-desc">Couper les notifications</span>
+                                                    <span class="setting-desc">Couper les alertes</span>
                                                 </div>
                                                 <label class="switch">
                                                     <input type="checkbox" id="toggle-mute" onchange="toggleMute(this.checked)">
-                                                    <span class="slider round"></span>
+                                                    <span class="slider"></span>
                                                 </label>
                                             </div>
                                         </div>
 
-                                        <!-- Section 3 : Actions Danger -->
                                         <div class="settings-section danger-zone">
-                                            <h4><i class="fa-solid fa-triangle-exclamation"></i> Zone de danger</h4>
-                                            <button class="btn-action-danger" onclick="rechercherDansChat()">
-                                                <i class="fa-solid fa-magnifying-glass"></i> Rechercher un message
-                                            </button>
-                                            <button class="btn-action-danger" onclick="exporterDiscussion()">
-                                                <i class="fa-solid fa-download"></i> Exporter la discussion
-                                            </button>
-                                            <button class="btn-action-danger text-red" onclick="viderHistoriqueChat()">
-                                                <i class="fa-solid fa-trash-can"></i> Vider toute la discussion
+                                            <h4><i class="fa-solid fa-triangle-exclamation"></i> Danger</h4>
+                                            <button class="btn-action-danger text-red" onclick="viderHistoriqueChat()" style="background:rgba(229,77,66,0.1); color:var(--danger); width:100%; padding:10px; border-radius:8px; border:1px solid var(--danger); font-weight:600; cursor:pointer;">
+                                                <i class="fa-solid fa-trash-can"></i> Vider la conversation
                                             </button>
                                         </div>
                                     </div>
                                 </div>
-                                    
-                                    <!-- L'input pour changer la couleur de la discussion -->
-                                    <input type="color" id="chat-color-picker" onchange="changerCouleurChat(this.value)" title="Personnaliser la couleur du chat">
-                                </div>
                                 
                                 <div id="messages-history" class="messages-history"></div>
     
-                                <div id="typing-indicator" style="display: none; padding: 5px 20px; font-size: 11px; color: var(--gold); font-style: italic;">
+                                <div id="typing-indicator" style="display: none; padding: 5px 20px; font-size: 11px; color: var(--gold); font-style: italic; background: var(--panel-dark);">
                                     L'utilisateur écrit...
                                 </div>
 
@@ -253,7 +210,7 @@
                                     <div id="voice-recording-indicator" class="voice-recording-feedback" style="display: none;">
                                         <div class="pulsing-red-dot"></div>
                                         <span id="recording-timer">0:00</span>
-                                        <span style="font-size: 11px; color: #888; font-weight: normal;">(Relâchez pour envoyer)</span>
+                                        <span style="font-size: 11px; color: #888;">(Relâchez pour envoyer)</span>
                                     </div>
 
                                     <input type="text" id="message-text" placeholder="Écrire votre message..." onkeydown="if(event.key === 'Enter') envoyerMessage()">
@@ -268,11 +225,11 @@
                                         <i class="fa-solid fa-microphone"></i>
                                     </button>
                                 </div>
+
                             </div>
                         </div>
                     </div>
 
-                    <!-- NOTIFICATIONS -->
                     <div id="notifications-section" style="display: none;">
                         <h2 class="section-title desktop-only">Vos Notifications</h2>
                         <div id="notifications-container"></div>
@@ -280,7 +237,6 @@
 
                 </main>
 
-                <!-- NAV MOBILE -->
                 <nav class="bottom-mobile-nav mobile-only">
                     <a href="javascript:void(0)" onclick="naviguerVers('feed')" class="mobile-nav-item active" id="mob-nav-feed"><i class="fa-solid fa-house"></i></a>
                     <a href="javascript:void(0)" onclick="naviguerVers('notifications')" class="mobile-nav-item" id="mob-nav-notifications" style="position: relative;">
@@ -295,7 +251,6 @@
             </div>
         </div>
         
-        <!-- MODALES ET OVERLAYS -->
         <div id="toast-container"></div>
 
         <div id="mobile-search-overlay" class="modal-overlay" style="display: none;" onclick="if(event.target === this) fermerRechercheMobile()">
@@ -346,7 +301,7 @@
         <div id="crop-modal" class="modal-overlay" style="display: none;">
             <div class="modal-box">
                 <h3>Ajuster votre photo</h3>
-                <div class="crop-container"><img id="image-to-crop" src="" alt=""></div>
+                <div class="crop-container"><img id="image-to-crop" src=""></div>
                 <div class="modal-actions">
                     <button class="btn-secondary" onclick="fermerModaleRecadrage()">Annuler</button>
                     <button class="btn-primary" onclick="sauvegarderAvatarRecadre()">Enregistrer</button>
@@ -356,24 +311,17 @@
 
     </div>
 
-    <!-- LIBRAIRIES EXTERNES -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.1/cropper.min.js"></script>
-    
-    <!-- ATTENTION : SOCKET.IO DOIT ÊTRE CHARGÉ AVANT APP.JS -->
     <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    
     <script src="app.js"></script>
 
-    <!-- ENREGISTREMENT DU SERVICE WORKER (PWA) -->
     <script>
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
                 navigator.serviceWorker.register('/sw.js')
-                .then(registration => {
-                    console.log('Service Worker enregistré avec succès pour la PWA !', registration.scope);
-                })
-                .catch(error => {
-                    console.log('Échec de l\'enregistrement du Service Worker :', error);
-                });
+                .then(reg => console.log('PWA Service Worker actif :', reg.scope))
+                .catch(err => console.log('Erreur PWA :', err));
             });
         }
     </script>
