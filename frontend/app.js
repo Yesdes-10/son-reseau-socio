@@ -554,7 +554,83 @@ async function envoyerMessage() {
     });
     if (res && res.ok) { input.value = ""; chargerDiscussion(chatActifUserId, true); chargerMessagerie(); }
 }
+// --- GESTION DU PANNEAU DE PARAMÈTRES ---
+function toggleChatSettings() {
+    const drawer = document.getElementById('chat-settings-drawer');
+    if (!drawer) return;
+    drawer.classList.toggle('hidden');
+    
+    // Charger les paramètres actuels du contact actif
+    if (!drawer.classList.contains('hidden') && chatActifUserId) {
+        chargerParametresChat(chatActifUserId);
+    }
+}
 
+function chargerParametresChat(userId) {
+    // Récupération depuis le LocalStorage (ou via ton API)
+    const color = localStorage.getItem(`chat_color_${userId}`) || '#dfb142';
+    const bg = localStorage.getItem(`chat_bg_${userId}`) || 'default';
+    const isEphemere = localStorage.getItem(`chat_ephemere_${userId}`) === 'true';
+    const isMuted = localStorage.getItem(`chat_mute_${userId}`) === 'true';
+
+    // Mise à jour de l'interface du drawer
+    document.getElementById('chat-color-picker').value = color;
+    document.getElementById('chat-bg-select').value = bg;
+    document.getElementById('toggle-ephemeral').checked = isEphemere;
+    document.getElementById('toggle-mute').checked = isMuted;
+
+    // Application visuelle immédiate
+    appliquerCouleurChat(color);
+    appliquerFondChat(bg);
+}
+
+// --- FOND D'ÉCRAN PERSONNALISÉ ---
+function changerFondChat(typeFond) {
+    if (!chatActifUserId) return;
+    localStorage.setItem(`chat_bg_${chatActifUserId}`, typeFond);
+    appliquerFondChat(typeFond);
+}
+
+function appliquerFondChat(typeFond) {
+    const container = document.getElementById("messages-history");
+    if (!container) return;
+    
+    // Nettoyer les anciennes classes de fond
+    container.className = "messages-history-container"; 
+    if (typeFond !== 'default') {
+        container.classList.add(`chat-bg-${typeFond}`);
+    }
+}
+
+// --- MESSAGES ÉPHÉMÈRES ---
+function toggleEphemere(actif) {
+    if (!chatActifUserId) return;
+    localStorage.setItem(`chat_ephemere_${chatActifUserId}`, actif);
+    afficherToast(actif ? "⏱️ Messages éphémères activés (24h)" : "⏱️ Messages éphémères désactivés");
+    // Tu pourras ici émettre un événement Socket.io pour prévenir l'autre utilisateur
+    if (socket) socket.emit('toggleEphemere', { cibleId: chatActifUserId, actif });
+}
+
+// --- MODE SILENCE ---
+function toggleMute(actif) {
+    if (!chatActifUserId) return;
+    localStorage.setItem(`chat_mute_${chatActifUserId}`, actif);
+    afficherToast(actif ? "🔇 Discussion en mode silence" : "🔔 Notifications réactivées");
+}
+
+// --- VIDER L'HISTORIQUE ---
+async function viderHistoriqueChat() {
+    if (!chatActifUserId) return;
+    if (!confirm("⚠️ Attention : Voulez-vous vraiment supprimer tous les messages de cette conversation pour vous et votre contact ?")) return;
+
+    const res = await fetchAPI(`/messages/clear/${chatActifUserId}`, { method: "DELETE" });
+    if (res && res.ok) {
+        document.getElementById("messages-history").innerHTML = "";
+        memoireDiscussionState = "";
+        afficherToast("Conversation vidée avec succès");
+        toggleChatSettings(); // Fermer le panneau
+    }
+}
 function fermerChatMobile() {
     chatActifUserId = null; 
     document.getElementById("mobile-messages-layout").classList.remove("chat-active");

@@ -151,11 +151,93 @@
                             </div>
 
                             <div class="chat-window" id="chat-window">
-                                <div id="chat-header" style="display: flex; justify-content: space-between; align-items: center;">
-                                    <div style="display: flex; align-items: center; gap: 10px;">
-                                        <button class="mobile-only btn-icon" onclick="fermerChatMobile()" style="background:transparent; border:none; color:var(--gold); padding:0;"><i class="fa-solid fa-arrow-left"></i></button>
-                                        <span id="chat-header-text">Sélectionnez un contact</span>
+                                <!-- EN-TÊTE DE LA DISCUSSION -->
+                                <div id="chat-header" class="chat-header-pro">
+                                    <div class="chat-header-user-info">
+                                        <button class="mobile-only btn-icon" onclick="fermerChatMobile()">
+                                            <i class="fa-solid fa-arrow-left"></i>
+                                        </button>
+                                        <img id="chat-header-avatar" src="/default-avatar.png" class="avatar-sm" style="display:none;">
+                                        <div class="chat-header-text-block">
+                                            <span id="chat-header-text" class="contact-name">Sélectionnez un contact</span>
+                                            <span id="chat-header-status" class="contact-status-sub">en ligne</span>
+                                        </div>
                                     </div>
+                                    
+                                    <!-- Bouton pour ouvrir le panneau de paramètres professionnels -->
+                                    <div class="chat-header-actions">
+                                        <button class="btn-icon" onclick="toggleChatSettings()" title="Paramètres de la discussion">
+                                            <i class="fa-solid fa-sliders"></i>
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <!-- PANNEAU LATÉRAL DE PARAMÈTRES (DRAWER) -->
+                                <div id="chat-settings-drawer" class="chat-drawer hidden">
+                                    <div class="drawer-header">
+                                        <h3>Paramètres de la discussion</h3>
+                                        <button class="btn-close" onclick="toggleChatSettings()"><i class="fa-solid fa-xmark"></i></button>
+                                    </div>
+                                    
+                                    <div class="drawer-body">
+                                        <!-- Section 1 : Design & Apparence -->
+                                        <div class="settings-section">
+                                            <h4><i class="fa-solid fa-wand-magic-sparkles"></i> Apparence</h4>
+                                            <div class="setting-item">
+                                                <label>Couleur des messages</label>
+                                                <input type="color" id="chat-color-picker" onchange="changerCouleurChat(this.value)">
+                                            </div>
+                                            <div class="setting-item">
+                                                <label>Fond d'écran</label>
+                                                <select id="chat-bg-select" onchange="changerFondChat(this.value)">
+                                                    <option value="default">Par défaut (Sombre)</option>
+                                                    <option value="geometric">Géométrique Moderne</option>
+                                                    <option value="stars">Nuit Étoilée</option>
+                                                    <option value="gradient">Dégradé Cyberpunk</option>
+                                                </select>
+                                            </div>
+                                        </div>
+
+                                        <!-- Section 2 : Confidentialité (Le "Jamais Vu") -->
+                                        <div class="settings-section">
+                                            <h4><i class="fa-solid fa-user-shield"></i> Confidentialité</h4>
+                                            <div class="setting-item toggle-item">
+                                                <div>
+                                                    <label>Messages Éphémères</label>
+                                                    <span class="setting-desc">Suppression auto après 24h</span>
+                                                </div>
+                                                <label class="switch">
+                                                    <input type="checkbox" id="toggle-ephemeral" onchange="toggleEphemere(this.checked)">
+                                                    <span class="slider round"></span>
+                                                </label>
+                                            </div>
+                                            <div class="setting-item toggle-item">
+                                                <div>
+                                                    <label>Mode Silence</label>
+                                                    <span class="setting-desc">Couper les notifications</span>
+                                                </div>
+                                                <label class="switch">
+                                                    <input type="checkbox" id="toggle-mute" onchange="toggleMute(this.checked)">
+                                                    <span class="slider round"></span>
+                                                </label>
+                                            </div>
+                                        </div>
+
+                                        <!-- Section 3 : Actions Danger -->
+                                        <div class="settings-section danger-zone">
+                                            <h4><i class="fa-solid fa-triangle-exclamation"></i> Zone de danger</h4>
+                                            <button class="btn-action-danger" onclick="rechercherDansChat()">
+                                                <i class="fa-solid fa-magnifying-glass"></i> Rechercher un message
+                                            </button>
+                                            <button class="btn-action-danger" onclick="exporterDiscussion()">
+                                                <i class="fa-solid fa-download"></i> Exporter la discussion
+                                            </button>
+                                            <button class="btn-action-danger text-red" onclick="viderHistoriqueChat()">
+                                                <i class="fa-solid fa-trash-can"></i> Vider toute la discussion
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
                                     
                                     <!-- L'input pour changer la couleur de la discussion -->
                                     <input type="color" id="chat-color-picker" onchange="changerCouleurChat(this.value)" title="Personnaliser la couleur du chat">

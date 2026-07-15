@@ -484,6 +484,57 @@ app.delete('/statuses/:id', verifierToken, (req, res) => {
     res.json({ message: "Statut supprimé !" });
 });
 
+// --- VIDER TOUTE UNE CONVERSATION ---
+app.delete('/messages/clear/:interlocuteurId', verifierToken, (req, res) => {
+    try {
+        const moiId = req.userId;
+        const autreId = req.params.interlocuteurId;
+
+        let messages = lireDB(fileMessages);
+
+        // On filtre en conservant uniquement les messages qui NE CONCERNENT PAS ces deux utilisateurs entre eux
+        const messagesRestants = messages.filter(m => {
+            const estDansLaDiscussion = (m.fromId === moiId && m.toId === autreId) || (m.fromId === autreId && m.toId === moiId);
+            return !estDansLaDiscussion; // On garde tout le reste
+        });
+
+        // Sauvegarde dans la base de données JSON
+        ecrireDB(fileMessages, messagesRestants);
+
+        // Optionnel : Prévenir l'interlocuteur en temps réel si connecté
+        const targetSocket = utilisateursConnectes[autreId];
+        if (targetSocket) {
+            io.to(targetSocket).emit('chatCleared', moiId);
+        }
+
+        res.json({ succes: true, message: "Historique de discussion supprimé." });
+    } catch (e) {
+        console.error("Erreur vidage chat :", e);
+        res.status(500).json({ erreur: "Erreur serveur." });
+    }
+});
+
+// --- NETTOYAGE AUTOMATIQUE DES MESSAGES ÉPHÉMÈRES (Toutes les heures) ---
+setInterval(() => {
+    let messages = lireDB(fileMessages);
+    const limite24h = Date.now() - (24 * 60 * 60 * 1000);
+    let messagesModifies = false;
+
+    // Si tu ajoutes une propriété "ephemere: true" lors de la création d'un message
+    messages = messages.filter(m => {
+        if (m.ephemere && new Date(m.date).getTime() < limite24h) {
+            messagesModifies = true;
+            return false; // On supprime le message
+        }
+        return true; // On garde
+    });
+
+    if (messagesModifies) {
+        ecrireDB(fileMessages, messages);
+        console.log("⏱️ Nettoyage automatique : anciens messages éphémères supprimés.");
+    }
+}, 60 * 60 * 1000); // Exécuté toutes les 60 minutes
+
 // --- EXECUTION DU SERVEUR VIA HTTP (REQUIS POUR SOCKET.IO) ---
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => console.log(`Serveur WebSockets et API en ligne sur le port ${PORT}`));
