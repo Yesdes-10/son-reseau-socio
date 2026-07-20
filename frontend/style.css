@@ -595,4 +595,3 @@ input:checked + .slider:before { transform: translateX(20px); }
 .chat-bg-geometric { background-image: radial-gradient(#333 1px, transparent 1px); background-size: 20px 20px; }
 .chat-bg-stars { background: radial-gradient(ellipse at bottom, #1b2735 0%, #090a0f 100%); }
 .chat-bg-gradient { background: linear-gradient(135deg, #1f0036 0%, #000f26 100%); }
--bg-gradient { background: linear-gradient(135deg, #1f0036 0%, #000f26 100%); }
