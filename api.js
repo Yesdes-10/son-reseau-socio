@@ -1,507 +1,358 @@
 /**
- * JO SOCIO - ENTERPRISE BACKEND ENGINE
- * Serveur d'application temps réel avec persistance de données JSON
+ * JO SOCIO - CORE ENGINE (STEP 3: ADVANCED INSTANT MESSAGING)
+ * Messagerie temps réel : Groupes, Notes vocales, Accusés de lecture précis ("Vu à..."), et Réactions
  */
 
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
-const fs = require('fs');
+const fs = require('fs').promises;
+const fsSync = require('fs');
 const path = require('path');
 const multer = require('multer');
 const crypto = require('crypto');
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server, {
-    cors: { 
-        origin: "*", 
-        methods: ["GET", "POST", "PUT", "DELETE"] 
-    }
-});
+const io = new Server(server, { cors: { origin: "*", methods: ["GET", "POST", "PUT", "DELETE"] } });
 
 const PORT = process.env.PORT || 3000;
+const JWT_SECRET = process.env.JWT_SECRET || "INSTA_ENTERPRISE_SECRET_KEY_2026_PROD";
 const UPLOADS_DIR = path.join(__dirname, 'uploads');
 const DATA_FILE = path.join(__dirname, 'data.json');
 
-// --- INITIALISATION DU SYSTEME DE STOCKAGE ---
-if (!fs.existsSync(UPLOADS_DIR)) {
-    fs.mkdirSync(UPLOADS_DIR, { recursive: true });
-}
+if (!fsSync.existsSync(UPLOADS_DIR)) fsSync.mkdirSync(UPLOADS_DIR, { recursive: true });
 
-let db = { users: [], posts: [], messages: [], notifications: [], statuses: [] };
-if (fs.existsSync(DATA_FILE)) {
-    try {
-        const fileContent = fs.readFileSync(DATA_FILE, 'utf8');
-        db = JSON.parse(fileContent || '{"users":[],"posts":[],"messages":[],"notifications":[],"statuses":[]}');
-    } catch (err) {
-        console.error("⚠️ Erreur de lecture de la base de données. Réinitialisation sécurisée.", err);
-    }
-}
+// STRUCTURE DE BD ENRICHIE AVEC LES GROUPES ("conversations")
+let db = { users: [], posts: [], messages: [], conversations: [], notifications: [], statuses: [] };
 
-const saveDB = () => {
+const initDB = async () => {
     try {
-        fs.writeFileSync(DATA_FILE, JSON.stringify(db, null, 2), 'utf8');
-    } catch (err) {
-        console.error("❌ Erreur lors de l'écriture dans data.json :", err);
-    }
+        if (fsSync.existsSync(DATA_FILE)) {
+            const data = await fs.readFile(DATA_FILE, 'utf8');
+            db = JSON.parse(data || '{"users":[],"posts":[],"messages":[],"conversations":[],"notifications":[],"statuses":[]}');
+            if (!db.conversations) db.conversations = [];
+        }
+    } catch (err) { console.error("⚠️ Erreur DB", err); }
+};
+initDB();
+
+const saveDB = async () => {
+    try { await fs.writeFile(DATA_FILE, JSON.stringify(db, null, 2), 'utf8'); } 
+    catch (err) { console.error("❌ Erreur écriture", err); }
 };
 
-// --- SECURITE & CRYPTOGRAPHIE ---
-const hashPassword = (password) => {
-    return crypto.createHash('sha256').update(password).digest('hex');
-};
-
-// --- MIDDLEWARES ---
-app.use(express.json());
+// --- MIDDLEWARES & STORAGE ---
+app.use(express.json({ limit: '10mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 app.use('/uploads', express.static(UPLOADS_DIR));
 
-// Configuration Multer & Sécurisation des extensions
 const storage = multer.diskStorage({
     destination: (req, file, cb) => cb(null, UPLOADS_DIR),
-    filename: (req, file, cb) => {
-        const uniqueSuffix = `${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
-        cb(null, `${uniqueSuffix}${path.extname(file.originalname).toLowerCase()}`);
-    }
+    filename: (req, file, cb) => cb(null, `${Date.now()}-${crypto.randomBytes(6).toString('hex')}${path.extname(file.originalname).toLowerCase()}`)
+});
+const upload = multer({ storage, limits: { fileSize: 50 * 1024 * 1024 } });
+
+const authMiddleware = ((req, res, next) => {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) return res.status(401).json({ erreur: "Non autorisé" });
+    try {
+        const decoded = jwt.verify(authHeader.split(' ')[1], JWT_SECRET);
+        const user = db.users.find(u => u._id === decoded.id);
+        if (!user) return res.status(403).json({ erreur: "Compte introuvable" });
+        req.user = user;
+        next();
+    } catch (err) { res.status(403).json({ erreur: "Token expiré" }); }
 });
 
-const upload = multer({ 
-    storage,
-    limits: { fileSize: 50 * 1024 * 1024 }, // Limite globale de 50 Mo
-    fileFilter: (req, file, cb) => {
-        const allowedTypes = /jpeg|jpg|png|gif|mp4|webm|mpeg|ogg|mp3|wav/;
-        const extName = allowedTypes.test(path.extname(file.originalname).toLowerCase());
-        const mimeType = allowedTypes.test(file.mimetype);
-        if (extName && mimeType) return cb(null, true);
-        cb(new Error("Format de fichier non supporté."));
-    }
-});
-
-// Nettoyage physique des fichiers (Garbage Collection)
-const supprimerFichierPhysique = (fileUrl) => {
-    if (!fileUrl) return;
-    const fileName = path.basename(fileUrl);
-    const filePath = path.join(UPLOADS_DIR, fileName);
-    if (fs.existsSync(filePath)) {
-        fs.unlink(filePath, (err) => {
-            if (err) console.error(`[Fichier] Impossible de supprimer : ${filePath}`, err);
-        });
-    }
-};
-
-// Injection automatique et envoi temps réel de notifications
-const declarerNotification = (toId, fromUser, type, targetId = null) => {
-    if (toId === fromUser._id) return; // Pas de notification à soi-même
-    
+const declarerNotification = async (toId, fromUser, type, targetId = null, extraData = null) => {
+    if (toId === fromUser._id) return;
     const newNotif = {
         _id: crypto.randomUUID(),
-        toId,
-        fromId: fromUser._id,
-        fromPseudo: fromUser.pseudo,
-        type, // 'like' | 'comment' | 'follow'
-        targetId,
-        read: false,
-        date: new Date().toISOString()
+        toId, fromId: fromUser._id, fromPseudo: fromUser.pseudo, fromAvatar: fromUser.avatarUrl,
+        type, targetId, extraData, read: false, date: new Date().toISOString()
     };
     db.notifications.push(newNotif);
-    saveDB();
-
-    // Notification Push en temps réel via WebSocket
+    await saveDB();
     io.to(toId).emit('newNotification', newNotif);
 };
 
-// Middleware d'authentification par Token
-const authMiddleware = (req, res, next) => {
-    const authHeader = req.headers.authorization;
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        return res.status(401).json({ erreur: "Accès refusé. Token manquant." });
-    }
-    const token = authHeader.split(' ')[1];
-    const user = db.users.find(u => u.token === token);
-    if (!user) return res.status(403).json({ erreur: "Session expirée ou invalide." });
-    req.user = user;
-    next();
-};
+// ==========================================
+// --- MODULE MESSAGERIE AVANCÉE & GROUPES ---
+// ==========================================
 
-// --- ROUTES : AUTHENTIFICATION ---
-app.post('/auth/inscription', (req, res) => {
-    const { pseudo, password } = req.body;
-    if (!pseudo || !password || !pseudo.trim()) {
-        return res.status(400).json({ erreur: "Tous les champs sont requis." });
-    }
-    const cleanPseudo = pseudo.trim();
-    if (db.users.some(u => u.pseudo.toLowerCase() === cleanPseudo.toLowerCase())) {
-        return res.status(400).json({ erreur: "Ce nom d'utilisateur est déjà pris." });
+/**
+ * 1. Créer ou récupérer une conversation (Privée ou Groupe)
+ */
+app.post('/conversations', authMiddleware, async (req, res) => {
+    const { participantIds, isGroup, groupName } = req.body;
+    
+    if (!participantIds || !Array.isArray(participantIds) || participantIds.length === 0) {
+        return res.status(400).json({ erreur: "Participants requis." });
     }
 
-    const newUser = {
+    // Inclure l'utilisateur connecté dans les participants
+    const allParticipants = Array.from(new Set([...participantIds, req.user._id]));
+
+    // Si c'est une conversation privée (1v1), vérifier si elle existe déjà
+    if (!isGroup && allParticipants.length === 2) {
+        const existingConv = db.conversations.find(c => 
+            !c.isGroup && 
+            c.participants.length === 2 && 
+            c.participants.every(id => allParticipants.includes(id))
+        );
+        if (existingConv) return res.json(existingConv);
+    }
+
+    // Création d'une nouvelle conversation
+    const newConv = {
         _id: crypto.randomUUID(),
-        pseudo: cleanPseudo,
-        password: hashPassword(password),
-        token: crypto.randomBytes(32).toString('hex'),
-        avatarUrl: null,
-        following: [],
-        followers: []
+        isGroup: !!isGroup,
+        name: isGroup ? (groupName || "Nouveau Groupe") : null,
+        adminId: isGroup ? req.user._id : null,
+        participants: allParticipants,
+        lastMessage: null,
+        updatedAt: new Date().toISOString(),
+        createdAt: new Date().toISOString()
     };
-    
-    db.users.push(newUser);
-    saveDB();
-    res.status(201).json({ message: "Compte créé avec succès." });
-});
 
-app.post('/auth/connexion', (req, res) => {
-    const { pseudo, password } = req.body;
-    if (!pseudo || !password) return res.status(400).json({ erreur: "Champs manquants." });
+    db.conversations.push(newConv);
+    await saveDB();
 
-    const user = db.users.find(u => 
-        u.pseudo.toLowerCase() === pseudo.trim().toLowerCase() && 
-        u.password === hashPassword(password)
-    );
-    
-    if (!user) return res.status(401).json({ erreur: "Identifiants incorrects." });
-    res.json({ token: user.token, _id: user._id, pseudo: user.pseudo });
-});
-
-// --- ROUTES : UTILISATEURS ---
-app.get('/users/me', authMiddleware, (req, res) => {
-    const mesPosts = db.posts.filter(p => p.auteurId === req.user._id);
-    res.json({
-        _id: req.user._id,
-        pseudo: req.user.pseudo,
-        avatarUrl: req.user.avatarUrl,
-        abonnementsCount: req.user.following ? req.user.following.length : 0,
-        mesPosts
+    // Avertir tous les membres du groupe via Socket
+    allParticipants.forEach(userId => {
+        io.to(userId).emit('newConversation', newConv);
     });
+
+    res.status(201).json(newConv);
 });
 
-app.post('/users/me/avatar', authMiddleware, upload.single('avatar'), (req, res) => {
-    if (!req.file) return res.status(400).json({ erreur: "Aucun fichier reçu." });
-    if (req.user.avatarUrl) supprimerFichierPhysique(req.user.avatarUrl);
-    
-    req.user.avatarUrl = `/uploads/${req.file.filename}`;
-    saveDB();
-    res.json({ avatarUrl: req.user.avatarUrl });
-});
+/**
+ * 2. Récupérer la liste de ses conversations triées par date du dernier message
+ */
+app.get('/conversations', authMiddleware, (req, res) => {
+    const mesConvs = db.conversations
+        .filter(c => c.participants.includes(req.user._id))
+        .map(conv => {
+            // Enrichir avec les profils des participants pour l'affichage
+            const profils = db.users
+                .filter(u => conv.participants.includes(u._id) && u._id !== req.user._id)
+                .map(u => ({ _id: u._id, pseudo: u.pseudo, avatarUrl: u.avatarUrl }));
+            
+            // Calculer le nombre de messages non lus pour l'utilisateur
+            const unreadCount = db.messages.filter(m => 
+                m.conversationId === conv._id && 
+                m.fromId !== req.user._id && 
+                (!m.readBy || !m.readBy.some(r => r.userId === req.user._id))
+            ).length;
 
-app.put('/users/me/pseudo', authMiddleware, (req, res) => {
-    const { nouveauPseudo } = req.body;
-    if (!nouveauPseudo || !nouveauPseudo.trim()) {
-        return res.status(400).json({ erreur: "Le pseudo ne peut pas être vide." });
-    }
-    
-    const cleanPseudo = nouveauPseudo.trim();
-    if (db.users.some(u => u._id !== req.user._id && u.pseudo.toLowerCase() === cleanPseudo.toLowerCase())) {
-        return res.status(400).json({ erreur: "Ce pseudo est déjà utilisé." });
-    }
-
-    req.user.pseudo = cleanPseudo;
-    saveDB();
-    res.json({ message: "Votre profil a été mis à jour avec succès." });
-});
-
-app.delete('/users/me', authMiddleware, (req, res) => {
-    if (req.user.avatarUrl) supprimerFichierPhysique(req.user.avatarUrl);
-    
-    // Purge complète de ses publications et fichiers liés
-    db.posts.filter(p => p.auteurId === req.user._id).forEach(p => supprimerFichierPhysique(p.imageUrl));
-    db.posts = db.posts.filter(p => p.auteurId !== req.user._id);
-    
-    // Purge des messages
-    db.messages.filter(m => m.fromId === req.user._id || m.toId === req.user._id).forEach(m => supprimerFichierPhysique(m.mediaUrl));
-    db.messages = db.messages.filter(m => m.fromId !== req.user._id && m.toId !== req.user._id);
-
-    db.users = db.users.filter(u => u._id !== req.user._id);
-    saveDB();
-    res.json({ message: "Votre compte a été définitivement supprimé." });
-});
-
-app.get('/users/search', authMiddleware, (req, res) => {
-    const query = req.query.q?.toLowerCase() || "";
-    const results = db.users
-        .filter(u => u._id !== req.user._id && u.pseudo.toLowerCase().includes(query))
-        .map(u => ({ _id: u._id, pseudo: u.pseudo, avatarUrl: u.avatarUrl }));
-    res.json(results);
-});
-
-app.get('/users/:id', authMiddleware, (req, res) => {
-    if (req.params.id === req.user._id || req.params.id === 'me') {
-        return res.json({ redirectMe: true });
-    }
-    const targetUser = db.users.find(u => u._id === req.params.id);
-    if (!targetUser) return res.status(404).json({ erreur: "Utilisateur introuvable." });
-    
-    const posts = db.posts.filter(p => p.auteurId === targetUser._id);
-    res.json({
-        _id: targetUser._id,
-        pseudo: targetUser.pseudo,
-        avatarUrl: targetUser.avatarUrl,
-        postsCount: posts.length,
-        estAbonne: req.user.following ? req.user.following.includes(targetUser._id) : false,
-        posts
-    });
-});
-
-app.post('/users/:id/follow', authMiddleware, (req, res) => {
-    if (req.params.id === req.user._id) return res.status(400).json({ erreur: "Action impossible." });
-    if (!req.user.following) req.user.following = [];
-    
-    const targetUser = db.users.find(u => u._id === req.params.id);
-    if (!targetUser) return res.status(404).json({ erreur: "Utilisateur introuvable." });
-
-    if (!req.user.following.includes(req.params.id)) {
-        req.user.following.push(req.params.id);
-        saveDB();
-        declarerNotification(req.params.id, req.user, 'follow');
-    }
-    res.json({ success: true });
-});
-
-app.post('/users/:id/unfollow', authMiddleware, (req, res) => {
-    if (!req.user.following) req.user.following = [];
-    req.user.following = req.user.following.filter(id => id !== req.params.id);
-    saveDB();
-    res.json({ success: true });
-});
-
-// --- ROUTES : FIL D'ACTUALITES & POSTS ---
-app.get('/feed', authMiddleware, (req, res) => {
-    const feedPosts = db.posts
-        .map(post => {
-            const auteur = db.users.find(u => u._id === post.auteurId);
             return {
-                ...post,
-                auteur: auteur ? { pseudo: auteur.pseudo, avatarUrl: auteur.avatarUrl } : { pseudo: "Anonyme" },
-                estLeMien: post.auteurId === req.user._id
+                ...conv,
+                displayProfiles: profils,
+                unreadCount
             };
         })
-        .sort((a, b) => new Date(b.date) - new Date(a.date));
-    res.json(feedPosts);
+        .sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
+
+    res.json(mesConvs);
 });
 
-app.post('/posts', authMiddleware, upload.single('image'), (req, res) => {
-    if (!req.body.contenu && !req.file) {
-        return res.status(400).json({ erreur: "Votre publication est vide." });
+/**
+ * 3. Récupérer l'historique d'une conversation avec statut de lecture précis
+ */
+app.get('/conversations/:id/messages', authMiddleware, (req, res) => {
+    const conv = db.conversations.find(c => c._id === req.params.id);
+    if (!conv || !conv.participants.includes(req.user._id)) {
+        return res.status(403).json({ erreur: "Accès refusé à cette conversation." });
     }
 
-    const newPost = {
-        _id: crypto.randomUUID(),
-        auteurId: req.user._id,
-        contenu: req.body.contenu || "",
-        imageUrl: req.file ? `/uploads/${req.file.filename}` : null,
-        mediaType: req.file?.mimetype.startsWith('video') ? 'video' : 'image',
-        likes: [],
-        commentaires: [],
-        date: new Date().toISOString()
-    };
-    db.posts.push(newPost);
-    saveDB();
-    res.status(201).json(newPost);
-});
+    const limit = parseInt(req.query.limit) || 50;
+    const msgs = db.messages
+        .filter(m => m.conversationId === conv._id)
+        .sort((a, b) => new Date(a.date) - new Date(b.date))
+        .slice(-limit);
 
-app.post('/posts/:id/like', authMiddleware, (req, res) => {
-    const post = db.posts.find(p => p._id === req.params.id);
-    if (!post) return res.status(404).json({ erreur: "Publication introuvable." });
-    
-    const index = post.likes.indexOf(req.user._id);
-    let aAime = false;
-    if (index === -1) {
-        post.likes.push(req.user._id);
-        aAime = true;
-    } else {
-        post.likes.splice(index, 1);
-    }
-    saveDB();
-
-    if (aAime) {
-        declarerNotification(post.auteurId, req.user, 'like', post._id);
-    }
-    res.json({ likesCount: post.likes.length });
-});
-
-app.post('/posts/:id/comment', authMiddleware, (req, res) => {
-    const post = db.posts.find(p => p._id === req.params.id);
-    if (!post) return res.status(404).json({ erreur: "Publication introuvable." });
-    if (!req.body.texte || !req.body.texte.trim()) {
-        return res.status(400).json({ erreur: "Le commentaire ne peut pas être vide." });
-    }
-
-    const comment = {
-        _id: crypto.randomUUID(),
-        auteur: req.user.pseudo,
-        texte: req.body.texte.trim(),
-        date: new Date().toISOString()
-    };
-    post.commentaires.push(comment);
-    saveDB();
-
-    declarerNotification(post.auteurId, req.user, 'comment', post._id);
-    res.status(201).json(comment);
-});
-
-app.delete('/posts/:id', authMiddleware, (req, res) => {
-    const postIndex = db.posts.findIndex(p => p._id === req.params.id && p.auteurId === req.user._id);
-    if (postIndex === -1) return res.status(403).json({ erreur: "Action non autorisée." });
-    
-    if (db.posts[postIndex].imageUrl) {
-        supprimerFichierPhysique(db.posts[postIndex].imageUrl);
-    }
-    db.posts.splice(postIndex, 1);
-    saveDB();
-    res.json({ success: true });
-});
-
-// --- ROUTES : MESSAGERIE PURE ---
-app.get('/messages/contacts', authMiddleware, (req, res) => {
-    const contacts = db.users
-        .filter(u => u._id !== req.user._id)
-        .map(u => {
-            const lastMsg = db.messages
-                .filter(m => (m.fromId === req.user._id && m.toId === u._id) || (m.fromId === u._id && m.toId === req.user._id))
-                .sort((a, b) => new Date(b.date) - new Date(a.date))[0];
-            return {
-                _id: u._id,
-                pseudo: u.pseudo,
-                avatarUrl: u.avatarUrl,
-                dernierMessage: lastMsg ? (lastMsg.mediaType === 'audio' ? "[Message vocal]" : lastMsg.texte) : null
-            };
-        });
-    res.json(contacts);
-});
-
-app.get('/messages/:id', authMiddleware, (req, res) => {
-    const msgs = db.messages.filter(m => 
-        (m.fromId === req.user._id && m.toId === req.params.id) || 
-        (m.fromId === req.params.id && m.toId === req.user._id)
-    ).sort((a, b) => new Date(a.date) - new Date(b.date));
     res.json(msgs);
 });
 
-app.post('/messages/:id', authMiddleware, upload.single('media'), (req, res) => {
-    if (!req.body.texte && !req.file) {
-        return res.status(400).json({ erreur: "Impossible d'envoyer un message vide." });
+/**
+ * 4. Envoyer un message (Texte, Note Vocale, Image ou Vidéo)
+ */
+app.post('/conversations/:id/messages', authMiddleware, upload.single('media'), async (req, res) => {
+    const conv = db.conversations.find(c => c._id === req.params.id);
+    if (!conv || !conv.participants.includes(req.user._id)) {
+        return res.status(403).json({ erreur: "Accès refusé." });
+    }
+
+    if (!req.body.texte && !req.file) return res.status(400).json({ erreur: "Message vide impossible." });
+
+    // Déterminer précisément le type de média (ex: note vocale vs musique standard)
+    let mediaType = 'text';
+    if (req.file) {
+        if (req.file.mimetype.startsWith('audio')) mediaType = 'audio'; // Note vocale
+        else if (req.file.mimetype.startsWith('video')) mediaType = 'video';
+        else mediaType = 'image';
     }
 
     const newMsg = {
         _id: crypto.randomUUID(),
+        conversationId: conv._id,
         fromId: req.user._id,
-        toId: req.params.id,
+        fromPseudo: req.user.pseudo,
+        fromAvatar: req.user.avatarUrl,
         texte: req.body.texte || "",
         mediaUrl: req.file ? `/uploads/${req.file.filename}` : null,
-        mediaType: req.file ? (req.file.mimetype.startsWith('audio') ? 'audio' : 'image') : 'text',
+        mediaType,
+        duration: req.body.duration ? parseInt(req.body.duration) : null, // Durée en secondes pour l'audio/vocale
+        reactions: [], // Emojis sur le message : [{ userId, emoji }]
         status: 'sent',
+        // Tableau pour gérer le "Vu par" en groupe ou en 1v1 avec horodatage exact
+        readBy: [{ userId: req.user._id, readAt: new Date().toISOString() }],
         date: new Date().toISOString()
     };
+
     db.messages.push(newMsg);
-    saveDB();
     
-    // Notification sockets temps réel en direct
-    io.to(req.params.id).emit('newMessage', newMsg);
+    // Mettre à jour la conversation
+    conv.lastMessage = {
+        texte: mediaType === 'audio' ? "🎤 Note vocale" : (newMsg.texte || "📷 Média"),
+        fromId: req.user._id,
+        date: newMsg.date
+    };
+    conv.updatedAt = newMsg.date;
+    await saveDB();
+
+    // Diffusion WebSocket en temps réel à tous les participants
+    conv.participants.forEach(userId => {
+        io.to(userId).emit('newMessage', newMsg);
+        io.to(userId).emit('conversationUpdated', conv);
+    });
+
     res.status(201).json(newMsg);
 });
 
-app.delete('/messages/clear/:id', authMiddleware, (req, res) => {
-    db.messages.filter(m => 
-        ((m.fromId === req.user._id && m.toId === req.params.id) || (m.fromId === req.params.id && m.toId === req.user._id))
-    ).forEach(m => supprimerFichierPhysique(m.mediaUrl));
+/**
+ * 5. Accusé de lecture "Vu à..." (Fonctionne en 1v1 et en Groupe)
+ */
+app.post('/conversations/:id/read', authMiddleware, async (req, res) => {
+    const conv = db.conversations.find(c => c._id === req.params.id);
+    if (!conv || !conv.participants.includes(req.user._id)) return res.status(403).json({ erreur: "Refusé" });
 
-    db.messages = db.messages.filter(m => 
-        !((m.fromId === req.user._id && m.toId === req.params.id) || (m.fromId === req.params.id && m.toId === req.user._id))
-    );
-    saveDB();
-    res.json({ success: true });
-});
+    const maintenant = new Date().toISOString();
+    let updated = false;
 
-app.delete('/messages/:id', authMiddleware, (req, res) => {
-    const msgIndex = db.messages.findIndex(m => m._id === req.params.id && m.fromId === req.user._id);
-    if (msgIndex !== -1) {
-        supprimerFichierPhysique(db.messages[msgIndex].mediaUrl);
-        db.messages.splice(msgIndex, 1);
-        saveDB();
+    // Marquer tous les messages non lus de la conversation avec un horodatage exact
+    db.messages
+        .filter(m => m.conversationId === conv._id && !m.readBy.some(r => r.userId === req.user._id))
+        .forEach(m => {
+            m.readBy.push({ userId: req.user._id, readAt: maintenant });
+            // En 1v1, si l'autre a lu, le statut passe à 'read'
+            if (!conv.isGroup) m.status = 'read';
+            updated = true;
+        });
+
+    if (updated) {
+        await saveDB();
+        // Avertir l'expéditeur et les membres du groupe que les messages ont été vus
+        conv.participants.forEach(userId => {
+            if (userId !== req.user._id) {
+                io.to(userId).emit('messagesRead', {
+                    conversationId: conv._id,
+                    readByUserId: req.user._id,
+                    readByPseudo: req.user.pseudo,
+                    readAt: maintenant, // Permet d'afficher "Vu à 14h02" sur le client !
+                    formattedTime: new Date(maintenant).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                });
+            }
+        });
     }
-    res.json({ success: true });
+
+    res.json({ success: true, readAt: maintenant });
 });
 
-// --- ROUTES : MODULE DE STATUS & AUDIENCE ---
-app.get('/statuses', authMiddleware, (req, res) => {
-    // Règle métier : Rendre obsolète les statuts datant de plus de 24h
-    db.statuses = db.statuses.filter(s => (new Date() - new Date(s.date)) < 86400000);
-    saveDB();
-    res.json(db.statuses);
-});
+/**
+ * 6. Réagir à un message avec un Emoji (ex: ❤️, 😂, 👍)
+ */
+app.post('/messages/:id/react', authMiddleware, async (req, res) => {
+    const { emoji } = req.body;
+    if (!emoji) return res.status(400).json({ erreur: "Emoji requis." });
 
-app.post('/statuses', authMiddleware, upload.single('statusMedia'), (req, res) => {
-    if (!req.body.texte && !req.file) {
-        return res.status(400).json({ erreur: "Le contenu du statut ne peut pas être vide." });
+    const msg = db.messages.find(m => m._id === req.params.id);
+    if (!msg) return res.status(404).json({ erreur: "Message introuvable." });
+
+    const conv = db.conversations.find(c => c._id === msg.conversationId);
+    if (!conv || !conv.participants.includes(req.user._id)) return res.status(403).json({ erreur: "Refusé" });
+
+    if (!msg.reactions) msg.reactions = [];
+    const existingIndex = msg.reactions.findIndex(r => r.userId === req.user._id);
+
+    // Si on clique sur le même emoji, on l'enlève (toggle), sinon on met à jour
+    if (existingIndex !== -1) {
+        if (msg.reactions[existingIndex].emoji === emoji) {
+            msg.reactions.splice(existingIndex, 1);
+        } else {
+            msg.reactions[existingIndex].emoji = emoji;
+        }
+    } else {
+        msg.reactions.push({ userId: req.user._id, pseudo: req.user.pseudo, emoji });
     }
 
-    const newStatus = {
-        _id: crypto.randomUUID(),
-        userId: req.user._id,
-        author: req.user.pseudo,
-        avatarUrl: req.user.avatarUrl,
-        text: req.body.texte || "",
-        mediaUrl: req.file ? `/uploads/${req.file.filename}` : null,
-        type: req.file ? 'image' : 'text',
-        date: new Date().toISOString()
-    };
-    db.statuses.push(newStatus);
-    saveDB();
-    res.status(201).json(newStatus);
+    await saveDB();
+
+    // Notifier la réaction en direct via WebSocket
+    conv.participants.forEach(userId => {
+        io.to(userId).emit('messageReactionUpdated', { messageId: msg._id, reactions: msg.reactions });
+    });
+
+    res.json({ reactions: msg.reactions });
 });
 
-app.post('/statuses/:id/read', authMiddleware, (req, res) => res.json({ success: true }));
+// ==========================================
+// --- MOTEUR TEMPS RÉEL (WEBSOCKETS ADVANCED) ---
+// ==========================================
 
-// --- ROUTES : NOTIFICATIONS ---
-app.get('/notifications', authMiddleware, (req, res) => {
-    const mesNotifs = db.notifications
-        .filter(n => n.toId === req.user._id)
-        .sort((a, b) => new Date(b.date) - new Date(a.date));
-    res.json(mesNotifs);
-});
-
-app.post('/notifications/read', authMiddleware, (req, res) => {
-    db.notifications.filter(n => n.toId === req.user._id).forEach(n => n.read = true);
-    saveDB();
-    res.json({ success: true });
-});
-
-// --- ENGINE: REAL-TIME MANAGEMENT (WEBSOCKETS) ---
 io.use((socket, next) => {
-    const token = socket.handshake.auth?.token;
-    const user = db.users.find(u => u.token === token);
-    if (!user) return next(new Error("Erreur d'authentification WebSocket"));
-    socket.user = user;
-    next();
+    try {
+        const decoded = jwt.verify(socket.handshake.auth?.token, JWT_SECRET);
+        socket.user = db.users.find(u => u._id === decoded.id);
+        if (!socket.user) return next(new Error("User not found"));
+        next();
+    } catch (err) { next(new Error("Auth Error")); }
 });
 
 io.on('connection', (socket) => {
-    // Le membre rejoint son canal d'écoute personnel exclusif
+    // Rejoindre sa propre room pour les notifications privées
     socket.join(socket.user._id);
     
-    // Diffusion globale de son statut en ligne
+    // Rejoindre automatiquement les rooms de toutes ses conversations (Groupes + 1v1)
+    db.conversations
+        .filter(c => c.participants.includes(socket.user._id))
+        .forEach(c => socket.join(`conv_${c._id}`));
+
     io.emit('userStatusChange', { userId: socket.user._id, status: 'online' });
 
-    socket.on('typing', (targetId) => {
-        io.to(targetId).emit('userTyping', socket.user._id);
+    // Événement : L'utilisateur est en train d'écrire ou d'enregistrer une note vocale
+    socket.on('typing', ({ conversationId, isAudio }) => {
+        socket.to(`conv_${conversationId}`).emit('userTyping', {
+            userId: socket.user._id,
+            pseudo: socket.user.pseudo,
+            conversationId,
+            action: isAudio ? "enregistre un audio..." : "écrit un message..."
+        });
     });
 
-    socket.on('stopTyping', (targetId) => {
-        io.to(targetId).emit('userStoppedTyping', socket.user._id);
+    socket.on('stopTyping', (conversationId) => {
+        socket.to(`conv_${conversationId}`).emit('userStoppedTyping', {
+            userId: socket.user._id,
+            conversationId
+        });
     });
-
-    socket.on('markAsRead', (targetId) => {
-        db.messages
-            .filter(m => m.fromId === targetId && m.toId === socket.user._id)
-            .forEach(m => m.status = 'read');
-        saveDB();
-        io.to(targetId).emit('messagesReadBy', socket.user._id);
-    });
-
+    
     socket.on('disconnect', () => {
-        io.emit('userStatusChange', { userId: socket.user._id, status: 'offline' });
+        io.emit('userStatusChange', { userId: socket.user._id, status: 'offline', lastSeen: new Date().toISOString() });
     });
 });
 
-// --- RUN SERVER ---
-server.listen(PORT, () => console.log(`🚀 Production Core Engine actif : http://localhost:${PORT}`));
+server.listen(PORT, () => console.log(`🚀 Moteur Messagerie Avancée (Étape 3) sur le port ${PORT}`));
