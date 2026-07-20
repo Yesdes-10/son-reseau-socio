@@ -1,87 +1,133 @@
+require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const jwt = require('jsonwebtoken');
-const fs = require('fs');
+const fs = require('fs').promises; // Utilisation des versions ASYNCHRONES non-bloquantes
+const { existsSync } = require('fs');
 const path = require('path');
 const multer = require('multer');
-
-// --- IMPORT WEBSOCKETS ---
+const bcrypt = require('bcrypt');
+const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
 const http = require('http');
 const { Server } = require('socket.io');
+const { v4: uuidv4 } = require('uuid'); // Générateur d'ID uniques robustes
 
 const app = express();
-app.use(cors());
-app.use(express.json());
 
-// --- INITIALISATION DU SERVEUR HTTP ET SOCKET.IO ---
+// --- CONFIGURATION SÉCURITÉ GLOBO-PRODUCTION ---
+app.use(helmet()); // Sécurise les en-têtes HTTP contre les injections et attaques XSS
+app.use(cors({ origin: process.env.CORS_ORIGIN || '*', credentials: true }));
+app.use(express.json({ limit: '10kb' })); // Limite la taille du body pour éviter les attaques DoS
+
+// Rate Limiter pour éviter le brute force sur l'authentification
+const authLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 20, // Limite chaque IP à 20 requêtes par fenêtre
+    message: { erreur: "Trop de tentatives. Veuillez réessayer plus tard." }
+});
+
 const server = http.createServer(app);
 const io = new Server(server, {
     cors: { origin: "*", methods: ["GET", "POST"] }
 });
 
-// Servir les fichiers statiques du front et des uploads
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 app.use(express.static(path.join(__dirname, 'frontend')));
 
-const SECRET_KEY = "ma_cle_secrete_reseau_social";
+const SECRET_KEY = process.env.JWT_SECRET;
+const SALT_ROUNDS = 12; // Force du hashage pour bcrypt
+
 const fileUsers = path.join(__dirname, 'utilisateurs.json');
 const filePosts = path.join(__dirname, 'publications.json');
 const fileMessages = path.join(__dirname, 'messages.json');
 const fileStatuses = path.join(__dirname, 'statuts.json');
 
-// --- CONFIGURATION DE STORAGE (MULTER) ---
+// --- MULTIPLE DISK STORAGE PROPRE ---
 const storage = multer.diskStorage({
-    destination: (req, file, cb) => {
+    destination: async (req, file, cb) => {
         const uploadDir = path.join(__dirname, 'uploads');
-        if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
+        if (!existsSync(uploadDir)) {
+            await fs.mkdir(uploadDir, { recursive: true });
+        }
         cb(null, uploadDir);
     },
     filename: (req, file, cb) => {
-        const nomUnique = Date.now() + '-' + Math.round(Math.random() * 1E9) + path.extname(file.originalname);
-        cb(null, nomUnique);
+        const uniqueSuffix = `${Date.now()}-${uuidv4()}`;
+        cb(null, `${uniqueSuffix}${path.extname(file.originalname)}`);
     }
 });
-const upload = multer({ storage: storage });
 
-// --- GESTIONNAIRES DE BASE DE DONNÉES ---
-function lireDB(fichier) {
-    if (!fs.existsSync(fichier)) { fs.writeFileSync(fichier, JSON.stringify([])); return []; }
-    try { return JSON.parse(fs.readFileSync(fichier, 'utf8')); } catch(e) { return []; }
+const upload = multer({ 
+    storage: storage,
+    limits: { fileSize: 5 * 1024 * 1024 }, // Limite les uploads à 5 Mo max
+    fileFilter: (req, file, cb) => {
+        const allowedTypes = /jpeg|jpg|png|gif/;
+        const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
+        const mimetype = allowedTypes.test(file.mimetype);
+        if (extname && mimetype) return cb(null, true);
+        cb(new Error("Seules les images (jpeg, jpg, png, gif) sont autorisées."));
+    }
+});
+
+// --- GESTIONNAIRES DE BASE DE DONNÉES ASYNCHRONES ---
+async function lireDB(fichier) {
+    if (!existsSync(fichier)) {
+        await fs.writeFile(fichier, JSON.stringify([]));
+        return [];
+    }
+    try {
+        const data = await fs.readFile(fichier, 'utf8');
+        return JSON.parse(data);
+    } catch (e) {
+        return [];
+    }
 }
-function ecrireDB(fichier, donnees) { fs.writeFileSync(fichier, JSON.stringify(donnees, null, 2)); }
 
-// --- SYSTEME DE NOTIFICATIONS ---
-function ajouterNotification(userId, type, fromPseudo, postId) {
-    const utilisateurs = lireDB(fileUsers);
+async function ecrireDB(fichier, donnees) {
+    await fs.writeFile(fichier, JSON.stringify(donnees, null, 2));
+}
+
+// --- SYSTEME DE NOTIFICATIONS OPTIMISÉ ---
+async function ajouterNotification(userId, type, fromPseudo, postId) {
+    const utilisateurs = await lireDB(fileUsers);
     const user = utilisateurs.find(u => u._id === userId);
     if (user) {
         if (!user.notifications) user.notifications = [];
         user.notifications.unshift({
-            id: Date.now().toString(), type: type, fromPseudo: fromPseudo, postId: postId, read: false, date: new Date()
+            id: uuidv4(), 
+            type, 
+            fromPseudo, 
+            postId, 
+            read: false, 
+            date: new Date().toISOString()
         });
-        ecrireDB(fileUsers, utilisateurs);
+        await ecrireDB(fileUsers, utilisateurs);
     }
 }
 
 // --- MIDDLEWARE DE SÉCURITÉ ---
 function verifierToken(req, res, next) {
     const authHeader = req.headers.authorization;
-    if (!authHeader) return res.status(401).json({ erreur: "Token manquant." });
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        return res.status(401).json({ erreur: "Accès refusé. Token manquant." });
+    }
     const token = authHeader.split(" ")[1];
     jwt.verify(token, SECRET_KEY, (err, decoded) => {
-        if (err) return res.status(403).json({ erreur: "Token invalide." });
-        req.userId = decoded.id; next();
+        if (err) return res.status(403).json({ erreur: "Token invalide ou expiré." });
+        req.userId = decoded.id; 
+        next();
     });
 }
 
 // ============================================================================
-// GESTION TEMPS RÉEL (WEBSOCKETS)
+// TEMPS RÉEL SÉCURISÉ (WEBSOCKETS)
 // ============================================================================
-const utilisateursConnectes = {}; // Stocke l'association : userId -> socket.id
+const utilisateursConnectes = new Map(); // Utilisation de Map() pour de meilleures performances
 
 io.use((socket, next) => {
     const token = socket.handshake.auth.token;
-    if (!token) return next(new Error("Erreur d'authentification"));
+    if (!token) return next(new Error("Erreur d'authentification : Token absent"));
     jwt.verify(token, SECRET_KEY, (err, decoded) => {
         if (err) return next(new Error("Token invalide"));
         socket.userId = decoded.id;
@@ -90,98 +136,145 @@ io.use((socket, next) => {
 });
 
 io.on('connection', (socket) => {
-    utilisateursConnectes[socket.userId] = socket.id;
+    utilisateursConnectes.set(socket.userId, socket.id);
 
     socket.on('typing', (destinataireId) => {
-        const targetSocket = utilisateursConnectes[destinataireId];
+        const targetSocket = utilisateursConnectes.get(destinataireId);
         if (targetSocket) io.to(targetSocket).emit('userTyping', socket.userId);
     });
 
     socket.on('stopTyping', (destinataireId) => {
-        const targetSocket = utilisateursConnectes[destinataireId];
+        const targetSocket = utilisateursConnectes.get(destinataireId);
         if (targetSocket) io.to(targetSocket).emit('userStoppedTyping', socket.userId);
     });
 
     socket.on('markAsRead', (expediteurId) => {
-        const targetSocket = utilisateursConnectes[expediteurId];
+        const targetSocket = utilisateursConnectes.get(expediteurId);
         if (targetSocket) io.to(targetSocket).emit('messagesReadBy', socket.userId);
     });
 
     socket.on('disconnect', () => {
-        delete utilisateursConnectes[socket.userId];
+        utilisateursConnectes.delete(socket.userId);
     });
 });
 
 // ============================================================================
-// CONFIGURATION DES ROUTES
+// ROUTES API - ASYNC/AWAIT
 // ============================================================================
 
 // --- 1. AUTHENTIFICATION ---
-app.post('/auth/inscription', (req, res) => {
-    const { pseudo, password } = req.body;
-    if (!pseudo || !password) return res.status(400).json({ erreur: "Champs requis." });
-    const utilisateurs = lireDB(fileUsers);
-    if (utilisateurs.find(u => u.pseudo.toLowerCase() === pseudo.toLowerCase())) {
-        return res.status(400).json({ erreur: "Ce pseudo est déjà pris." });
+app.post('/auth/inscription', authLimiter, async (req, res) => {
+    try {
+        const { pseudo, password } = req.body;
+        if (!pseudo || !password || password.length < 6) {
+            return res.status(400).json({ erreur: "Pseudo et mot de passe (min 6 char) requis." });
+        }
+        
+        const utilisateurs = await lireDB(fileUsers);
+        if (utilisateurs.some(u => u.pseudo.toLowerCase() === pseudo.trim().toLowerCase())) {
+            return res.status(400).json({ erreur: "Ce pseudo est déjà pris." });
+        }
+
+        // HASHAGE SÉCURISÉ DU MOT DE PASSE
+        const hashedPassword = await bcrypt.hash(password, SALT_ROUNDS);
+
+        utilisateurs.push({ 
+            _id: uuidv4(), 
+            pseudo: pseudo.trim(), 
+            password: hashedPassword, 
+            avatarUrl: null, 
+            abonnements: [], 
+            notifications: [] 
+        });
+        
+        await ecrireDB(fileUsers, utilisateurs);
+        res.status(201).json({ message: "Inscription réussie." });
+    } catch (error) {
+        res.status(500).json({ erreur: "Erreur serveur lors de l'inscription." });
     }
-    utilisateurs.push({ _id: Date.now().toString(), pseudo, password, avatarUrl: null, abonnements: [], notifications: [] });
-    ecrireDB(fileUsers, utilisateurs);
-    res.status(201).json({ message: "Inscription réussie." });
 });
 
-app.post('/auth/connexion', (req, res) => {
-    const { pseudo, password } = req.body;
-    const utilisateurs = lireDB(fileUsers);
-    const user = utilisateurs.find(u => u.pseudo.toLowerCase() === pseudo.toLowerCase() && u.password === password);
-    if (!user) return res.status(401).json({ erreur: "Identifiants incorrects." });
-    const token = jwt.sign({ id: user._id }, SECRET_KEY, { expiresIn: '24h' });
-    res.json({ token, message: "Connecté avec succès." });
+app.post('/auth/connexion', authLimiter, async (req, res) => {
+    try {
+        const { pseudo, password } = req.body;
+        const utilisateurs = await lireDB(fileUsers);
+        const user = utilisateurs.find(u => u.pseudo.toLowerCase() === pseudo.trim().toLowerCase());
+        
+        // COMPARAISON SÉCURISÉE AVEC BCRYPT
+        if (!user || !(await bcrypt.compare(password, user.password))) {
+            return res.status(401).json({ erreur: "Identifiants incorrects." });
+        }
+
+        const token = jwt.sign({ id: user._id }, SECRET_KEY, { expiresIn: '24h' });
+        res.json({ token, message: "Connecté avec succès." });
+    } catch (error) {
+        res.status(500).json({ erreur: "Erreur serveur lors de la connexion." });
+    }
 });
 
 // --- 2. GESTION DES UTILISATEURS ---
-app.get('/users/me', verifierToken, (req, res) => {
-    const utilisateurs = lireDB(fileUsers); const publications = lireDB(filePosts);
-    const moi = utilisateurs.find(u => u._id === req.userId);
-    if (!moi) return res.status(404).json({ erreur: "Utilisateur non trouvé" });
-    const mesPosts = publications.filter(p => p.auteurId === moi._id).sort((a, b) => new Date(b.date) - new Date(a.date));
-    res.json({ _id: moi._id, pseudo: moi.pseudo, avatarUrl: moi.avatarUrl, abonnementsCount: (moi.abonnements || []).length, mesPosts: mesPosts });
+app.get('/users/me', verifierToken, async (req, res) => {
+    try {
+        const utilisateurs = await lireDB(fileUsers); 
+        const publications = await lireDB(filePosts);
+        const moi = utilisateurs.find(u => u._id === req.userId);
+        
+        if (!moi) return res.status(404).json({ erreur: "Utilisateur non trouvé" });
+        
+        const mesPosts = publications
+            .filter(p => p.auteurId === moi._id)
+            .sort((a, b) => new Date(b.date) - new Date(a.date));
+            
+        res.json({ 
+            _id: moi._id, 
+            pseudo: moi.pseudo, 
+            avatarUrl: moi.avatarUrl, 
+            abonnementsCount: (moi.abonnements || []).length, 
+            mesPosts 
+        });
+    } catch (error) {
+        res.status(500).json({ erreur: "Erreur lors de la récupération du profil." });
+    }
 });
 
-app.post('/users/me/avatar', verifierToken, upload.single('avatar'), (req, res) => {
-    if (!req.file) return res.status(400).json({ erreur: "Aucun fichier fourni." });
-    const utilisateurs = lireDB(fileUsers); const moi = utilisateurs.find(u => u._id === req.userId);
-    if (moi.avatarUrl) {
-        const ancienChemin = path.join(__dirname, moi.avatarUrl);
-        if (fs.existsSync(ancienChemin)) { try { fs.unlinkSync(ancienChemin); } catch(e){} }
+app.post('/users/me/avatar', verifierToken, upload.single('avatar'), async (req, res) => {
+    try {
+        if (!req.file) return res.status(400).json({ erreur: "Aucun fichier fourni." });
+        
+        const utilisateurs = await lireDB(fileUsers); 
+        const moi = utilisateurs.find(u => u._id === req.userId);
+        
+        if (moi.avatarUrl) {
+            const ancienChemin = path.join(__dirname, moi.avatarUrl);
+            try { await fs.unlink(ancienChemin); } catch(e){}
+        }
+        
+        moi.avatarUrl = `/uploads/${req.file.filename}`;
+        await ecrireDB(fileUsers, utilisateurs);
+        res.json({ message: "Photo de profil mise à jour !", avatarUrl: moi.avatarUrl });
+    } catch (error) {
+        res.status(500).json({ erreur: "Erreur lors de la modification de l'avatar." });
     }
-    moi.avatarUrl = `/uploads/${req.file.filename}`;
-    ecrireDB(fileUsers, utilisateurs);
-    res.json({ message: "Photo de profil mise à jour !", avatarUrl: moi.avatarUrl });
 });
 
-app.put('/users/me/pseudo', verifierToken, (req, res) => {
-    const { nouveauPseudo } = req.body;
-    if (!nouveauPseudo || nouveauPseudo.trim() === "") return res.status(400).json({ erreur: "Le pseudo ne peut pas être vide." });
-    const utilisateurs = lireDB(fileUsers); const moi = utilisateurs.find(u => u._id === req.userId);
-    if (utilisateurs.some(u => u.pseudo.toLowerCase() === nouveauPseudo.trim().toLowerCase() && u._id !== req.userId)) {
-        return res.status(400).json({ erreur: "Ce pseudo est déjà pris." });
+app.put('/users/me/pseudo', verifierToken, async (req, res) => {
+    try {
+        const { nouveauPseudo } = req.body;
+        if (!nouveauPseudo || nouveauPseudo.trim() === "") {
+            return res.status(400).json({ erreur: "Le pseudo ne peut pas être vide." });
+        const utilisateurs = await lireDB(fileUsers);
+        const moi = utilisateurs.find(u => u._id === req.userId);
+        if (utilisateurs.some(u => u.pseudo.toLowerCase() === 
+        nouveauPseudo.trim().toLowerCase() && u._id !== req.userId)) {
+            return res.status(400).json({ erreur: "Ce pseudo est déjà pris." });
+}
+        moi.pseudo = nouveauPseudo.trim();
+        await ecrireDB(fileUsers, utilisateurs);
+        res.json({ message: "Pseudo mis à jour avec succès !", nouveauPseudo: moi.pseudo });
+} 
+        } catch (error) {res.status(500).json({ erreur: "Erreur lors de la modification du pseudo." });
     }
-    moi.pseudo = nouveauPseudo.trim();
-    ecrireDB(fileUsers, utilisateurs);
-    res.json({ message: "Pseudo mis à jour avec succès !", nouveauPseudo: moi.pseudo });
 });
-
-app.delete('/users/me', verifierToken, (req, res) => {
-    let utilisateurs = lireDB(fileUsers); let publications = lireDB(filePosts);
-    let messages = lireDB(fileMessages); let statuts = lireDB(fileStatuses);
-    const index = utilisateurs.findIndex(u => u._id === req.userId);
-    if (index === -1) return res.status(404).json({ erreur: "Compte introuvable." });
-    const moi = utilisateurs[index];
-
-    if (moi.avatarUrl) {
-        const ancienChemin = path.join(__dirname, moi.avatarUrl);
-        if (fs.existsSync(ancienChemin)) { try { fs.unlinkSync(ancienChemin); } catch(e){} }
-    }
     publications.filter(p => p.auteurId === req.userId).forEach(p => {
         if (p.imageUrl) {
             const pathImg = path.join(__dirname, p.imageUrl);
