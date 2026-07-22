@@ -936,3 +936,44 @@ async function rechercherUtilisateursMobile() {
         });
     }
 }
+
+// Exemple type pour la recherche dynamique d'utilisateurs
+const searchInput = document.getElementById('search-user-input'); // Adaptez l'ID selon votre HTML
+const searchResultsContainer = document.getElementById('search-results-container');
+
+if (searchInput) {
+    searchInput.addEventListener('input', async (e) => {
+        const query = e.target.value.trim();
+        
+        if (query.length === 0) {
+            searchResultsContainer.innerHTML = '';
+            return;
+        }
+
+        try {
+            const response = await fetch(`/api/users/search?q=${encodeURIComponent(query)}`, {
+                headers: {
+                    'Authorization': `Bearer ${localStorage.getItem('token')}` // Si vous utilisez JWT
+                }
+            });
+            
+            if (!response.ok) throw new Error('Erreur lors de la recherche');
+            
+            const users = await response.json();
+            
+            // Affichage des résultats
+            searchResultsContainer.innerHTML = '';
+            users.forEach(user => {
+                const userElement = document.createElement('div');
+                userElement.className = 'user-result';
+                userElement.innerHTML = `
+                    <span>${user.pseudo || user.username}</span>
+                    <button class="btn-secondary" onclick="startChat('${user._id}')">Discuter</button>
+                `;
+                searchResultsContainer.appendChild(userElement);
+            });
+        } catch (error) {
+            console.error('Erreur de recherche :', error);
+        }
+    });
+}
