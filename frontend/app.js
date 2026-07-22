@@ -99,7 +99,7 @@ function initialiserWebSockets(token) {
         if (chatActifUserId === userId) {
             document.getElementById('typing-indicator').style.display = 'block';
             const hist = document.getElementById("messages-history");
-            hist.scrollTop = hist.scrollHeight;
+            if (hist) hist.scrollTop = hist.scrollHeight;
         }
     });
 
@@ -112,6 +112,23 @@ function initialiserWebSockets(token) {
     socket.on('messagesReadBy', (userId) => {
         if (chatActifUserId === userId) {
             chargerDiscussion(userId, false); 
+        }
+    });
+
+    // Rendre la suppression de message dynamique sur les deux écrans
+    socket.on('messageDeleted', (data) => {
+        if (chatActifUserId === data.fromId || chatActifUserId === data.toId) {
+            chargerDiscussion(chatActifUserId, false);
+        }
+    });
+
+    // Synchroniser en direct le basculement du mode éphémère
+    socket.on('ephemereToggled', (data) => {
+        if (chatActifUserId === data.fromId) {
+            localStorage.setItem(`chat_ephemere_${chatActifUserId}`, data.actif);
+            const check = document.getElementById('toggle-ephemeral');
+            if (check) check.checked = data.actif;
+            afficherToast(data.actif ? "⏱️ Contact a activé les messages éphémères" : "⏱️ Messages éphémères désactivés par le contact");
         }
     });
 }
@@ -487,12 +504,17 @@ async function chargerDiscussion(userId, forcerScroll = false) {
         const msgs = await res.json();
         const container = document.getElementById("messages-history");
         
-        // --- NOUVEAU : Application de la couleur sauvegardée ---
-        const savedColor = localStorage.getItem(`chat_color_${userId}`) || '#dfb142'; // Gold par défaut
+        // Application de la couleur sauvegardée pour le chat
+        const savedColor = localStorage.getItem(`chat_color_${userId}`) || '#dfb142';
         appliquerCouleurChat(savedColor);
         const picker = document.getElementById('chat-color-picker');
         if (picker) picker.value = savedColor;
-        // --------------------------------------------------------
+        
+        // Application du fond d'écran sauvegardé pour le chat
+        const savedBg = localStorage.getItem(`chat_bg_${userId}`) || 'default';
+        appliquerFondChat(savedBg);
+        const bgSelect = document.getElementById('chat-bg-select');
+        if (bgSelect) bgSelect.value = savedBg;
 
         document.querySelectorAll('.contact-item').forEach(el => el.classList.remove('active'));
         const activeItem = document.getElementById(`contact-${userId}`);
@@ -515,14 +537,14 @@ async function chargerDiscussion(userId, forcerScroll = false) {
                     else cocheHTML = `<span class="msg-status-tick tick-sent"><i class="fa-solid fa-check"></i></span>`;
                 }
 
-                let contenuHTML = m.texte;
+                let contenuHTML = m.texte || "";
                 if (m.mediaType === 'audio') {
                     contenuHTML = `<audio src="${API_URL}${m.mediaUrl}" controls class="chat-voice-player"></audio>`;
                 } else if (m.mediaUrl) {
                     contenuHTML = `<img src="${API_URL}${m.mediaUrl}" style="max-width: 200px; border-radius: 8px;"><br>${m.texte || ""}`;
                 }
 
-                // --- NOUVEAU : Bouton de suppression ---
+                // Bouton de suppression individuelle
                 const btnSupprimer = `<button class="btn-delete-msg" onclick="supprimerMessage('${m._id}')"><i class="fa-solid fa-trash"></i></button>`;
 
                 const div = document.createElement("div");
@@ -554,6 +576,7 @@ async function envoyerMessage() {
     });
     if (res && res.ok) { input.value = ""; chargerDiscussion(chatActifUserId, true); chargerMessagerie(); }
 }
+
 // --- GESTION DU PANNEAU DE PARAMÈTRES ---
 function toggleChatSettings() {
     const drawer = document.getElementById('chat-settings-drawer');
@@ -567,19 +590,16 @@ function toggleChatSettings() {
 }
 
 function chargerParametresChat(userId) {
-    // Récupération depuis le LocalStorage (ou via ton API)
     const color = localStorage.getItem(`chat_color_${userId}`) || '#dfb142';
     const bg = localStorage.getItem(`chat_bg_${userId}`) || 'default';
     const isEphemere = localStorage.getItem(`chat_ephemere_${userId}`) === 'true';
     const isMuted = localStorage.getItem(`chat_mute_${userId}`) === 'true';
 
-    // Mise à jour de l'interface du drawer
     document.getElementById('chat-color-picker').value = color;
     document.getElementById('chat-bg-select').value = bg;
     document.getElementById('toggle-ephemeral').checked = isEphemere;
     document.getElementById('toggle-mute').checked = isMuted;
 
-    // Application visuelle immédiate
     appliquerCouleurChat(color);
     appliquerFondChat(bg);
 }
@@ -594,9 +614,7 @@ function changerFondChat(typeFond) {
 function appliquerFondChat(typeFond) {
     const container = document.getElementById("messages-history");
     if (!container) return;
-    
-    // Nettoyer les anciennes classes de fond
-    container.className = "messages-history-container"; 
+    container.className = "messages-history"; 
     if (typeFond !== 'default') {
         container.classList.add(`chat-bg-${typeFond}`);
     }
@@ -607,7 +625,6 @@ function toggleEphemere(actif) {
     if (!chatActifUserId) return;
     localStorage.setItem(`chat_ephemere_${chatActifUserId}`, actif);
     afficherToast(actif ? "⏱️ Messages éphémères activés (24h)" : "⏱️ Messages éphémères désactivés");
-    // Tu pourras ici émettre un événement Socket.io pour prévenir l'autre utilisateur
     if (socket) socket.emit('toggleEphemere', { cibleId: chatActifUserId, actif });
 }
 
@@ -628,9 +645,10 @@ async function viderHistoriqueChat() {
         document.getElementById("messages-history").innerHTML = "";
         memoireDiscussionState = "";
         afficherToast("Conversation vidée avec succès");
-        toggleChatSettings(); // Fermer le panneau
+        toggleChatSettings();
     }
 }
+
 function fermerChatMobile() {
     chatActifUserId = null; 
     document.getElementById("mobile-messages-layout").classList.remove("chat-active");
@@ -840,7 +858,7 @@ function demarrerVisionneuseStatut(statusArray) {
 
         const body = document.getElementById('viewer-content-area');
         if (s.type === 'image') {
-            body.innerHTML = `<div style='text-align:center;'><img src="${API_URL}${s.mediaUrl}"><p style='color:white; margin-top:10px; font-size:14px;'>${s.text}</p></div>`;
+            body.innerHTML = `<div style='text-align:center;'><img src="${API_URL}${s.mediaUrl}"><p style='color:white; margin-top:10px; font-size:14px;'>${s.text || ""}</p></div>`;
         } else {
             body.innerHTML = `<div class="big-text-status">"${s.text}"</div>`;
         }
@@ -864,15 +882,14 @@ function fermerVisionneuseStatut() {
 // --- PERSONNALISATION DES COULEURS ---
 function changerCouleurChat(couleur) {
     if (!chatActifUserId) return;
-    // Sauvegarder la préférence pour cet utilisateur précis
     localStorage.setItem(`chat_color_${chatActifUserId}`, couleur);
     appliquerCouleurChat(couleur);
 }
 
 function appliquerCouleurChat(couleur) {
-    // Modifier la variable CSS dynamiquement
     document.documentElement.style.setProperty('--chat-theme-color', couleur);
 }
+
 // --- GESTION DE LA RECHERCHE MOBILE ---
 function ouvrirRechercheMobile() {
     document.getElementById("mobile-search-overlay").style.display = "flex";
@@ -889,12 +906,15 @@ function fermerRechercheMobile() {
 async function supprimerMessage(messageId) {
     if (!confirm("Voulez-vous vraiment supprimer ce message ?")) return;
     
-    // Appel à l'API backend pour supprimer le message
     const res = await fetchAPI(`/messages/${messageId}`, { method: "DELETE" });
     if (res && res.ok) {
         afficherToast("Message supprimé");
-        // On force le rechargement de la discussion pour faire disparaître le message
-        chargerDiscussion(chatActifUserId, true); 
+        // Recharger le chat immédiatement pour l'utilisateur
+        chargerDiscussion(chatActifUserId, false); 
+        // Avertir l'autre utilisateur via Socket.io en direct
+        if (socket && chatActifUserId) {
+            socket.emit('deleteMessage', { messageId, cibleId: chatActifUserId });
+        }
     }
 }
 

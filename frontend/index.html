@@ -185,7 +185,7 @@
                                             <h4><i class="fa-solid fa-wand-magic-sparkles"></i> Apparence</h4>
                                             <div class="setting-item">
                                                 <label>Couleur des messages</label>
-                                                <input type="color" id="chat-color-picker" onchange="changerCouleurChat(this.value)">
+                                                <input type="color" id="chat-color-picker" onchange="changerCouleurChat(this.value)" title="Personnaliser la couleur du chat">
                                             </div>
                                             <div class="setting-item">
                                                 <label>Fond d'écran</label>
@@ -238,11 +238,8 @@
                                         </div>
                                     </div>
                                 </div>
-                                    
-                                    <!-- L'input pour changer la couleur de la discussion -->
-                                    <input type="color" id="chat-color-picker" onchange="changerCouleurChat(this.value)" title="Personnaliser la couleur du chat">
-                                </div>
                                 
+                                <!-- HISTORIQUE DES MESSAGES -->
                                 <div id="messages-history" class="messages-history"></div>
     
                                 <div id="typing-indicator" style="display: none; padding: 5px 20px; font-size: 11px; color: var(--gold); font-style: italic;">
