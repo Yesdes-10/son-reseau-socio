@@ -185,7 +185,7 @@
                                             <h4><i class="fa-solid fa-wand-magic-sparkles"></i> Apparence</h4>
                                             <div class="setting-item">
                                                 <label>Couleur des messages</label>
-                                                <input type="color" id="chat-color-picker" onchange="changerCouleurChat(this.value)">
+                                                <input type="color" id="chat-color-picker" onchange="changerCouleurChat(this.value)" title="Personnaliser la couleur du chat">
                                             </div>
                                             <div class="setting-item">
                                                 <label>Fond d'écran</label>
@@ -238,17 +238,15 @@
                                         </div>
                                     </div>
                                 </div>
-                                    
-                                    <!-- L'input pour changer la couleur de la discussion -->
-                                    <input type="color" id="chat-color-picker" onchange="changerCouleurChat(this.value)" title="Personnaliser la couleur du chat">
-                                </div>
                                 
+                                <!-- ZONE DES MESSAGES -->
                                 <div id="messages-history" class="messages-history"></div>
     
                                 <div id="typing-indicator" style="display: none; padding: 5px 20px; font-size: 11px; color: var(--gold); font-style: italic;">
                                     L'utilisateur écrit...
                                 </div>
 
+                                <!-- ZONE DE SAISIE -->
                                 <div id="chat-input-block" class="chat-input-area" style="display: none;">
                                     <div id="voice-recording-indicator" class="voice-recording-feedback" style="display: none;">
                                         <div class="pulsing-red-dot"></div>
@@ -256,6 +254,13 @@
                                         <span style="font-size: 11px; color: #888; font-weight: normal;">(Relâchez pour envoyer)</span>
                                     </div>
 
+                                    <!-- Bouton de pièce jointe (Image/Vidéo) -->
+                                    <label for="chat-media-input" class="btn-icon" style="cursor: pointer; margin-right: 8px;" title="Joindre une photo/vidéo">
+                                        <i class="fa-solid fa-paperclip"></i>
+                                    </label>
+                                    <input type="file" id="chat-media-input" accept="image/*,video/*" style="display: none;" onchange="envoyerMediaMessage(event)">
+
+                                    <!-- Champ texte et boutons d'envoi -->
                                     <input type="text" id="message-text" placeholder="Écrire votre message..." onkeydown="if(event.key === 'Enter') envoyerMessage()">
                                     <button class="btn-primary" id="btn-send-text" onclick="envoyerMessage()"><i class="fa-solid fa-paper-plane"></i></button>
                                     

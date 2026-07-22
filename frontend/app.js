@@ -3,7 +3,11 @@ const PAR_DEFAUT_AVATAR = "https://www.w3schools.com/howto/img_avatar.png";
 
 let fichierImageSelectionne = null; 
 let fichierStatutSelectionne = null;
-let chatActifUserId = null; 
+
+// Variables Chat & Conversations
+let chatActifConvId = null; 
+let chatActifDestinataireId = null;
+
 let cropperInstance = null;
 let dernierIdNotification = null;
 let memoireDiscussionState = ""; 
@@ -85,9 +89,8 @@ function initialiserWebSockets(token) {
     socket = io(API_URL, { auth: { token } });
 
     socket.on('newMessage', (msg) => {
-        if (chatActifUserId === msg.fromId && document.getElementById('messages-section').style.display === 'block') {
-            chargerDiscussion(chatActifUserId, true);
-            socket.emit('markAsRead', msg.fromId);
+        if (chatActifConvId === msg.conversationId && document.getElementById('messages-section').style.display === 'block') {
+            chargerDiscussion(chatActifConvId, msg.fromId, null, true);
         } else {
             chargerMessagerie();
             actualiserBadgeNotifications(false);
@@ -95,50 +98,55 @@ function initialiserWebSockets(token) {
         }
     });
 
-    socket.on('userTyping', (userId) => {
-        if (chatActifUserId === userId) {
-            document.getElementById('typing-indicator').style.display = 'block';
+    socket.on('userTyping', (data) => {
+        if (chatActifConvId === data.conversationId) {
+            const ind = document.getElementById('typing-indicator');
+            if(ind) {
+                ind.style.display = 'block';
+                ind.innerText = `@${data.pseudo} ${data.action}`;
+            }
             const hist = document.getElementById("messages-history");
             if (hist) hist.scrollTop = hist.scrollHeight;
         }
     });
 
-    socket.on('userStoppedTyping', (userId) => {
-        if (chatActifUserId === userId) {
-            document.getElementById('typing-indicator').style.display = 'none';
+    socket.on('userStoppedTyping', (data) => {
+        if (chatActifConvId === data.conversationId) {
+            const ind = document.getElementById('typing-indicator');
+            if(ind) ind.style.display = 'none';
         }
     });
 
-    socket.on('messagesReadBy', (userId) => {
-        if (chatActifUserId === userId) {
-            chargerDiscussion(userId, false); 
+    socket.on('messagesRead', (data) => {
+        if (chatActifConvId === data.conversationId) {
+            chargerDiscussion(chatActifConvId, chatActifDestinataireId, null, false); 
         }
     });
 
-    // Rendre la suppression de message dynamique sur les deux écrans
+    // Rendre la suppression de message dynamique
     socket.on('messageDeleted', (data) => {
-        if (chatActifUserId === data.fromId || chatActifUserId === data.toId) {
-            chargerDiscussion(chatActifUserId, false);
+        if (chatActifConvId === data.conversationId) {
+            chargerDiscussion(chatActifConvId, chatActifDestinataireId, null, false);
         }
     });
 
     // Synchroniser en direct le basculement du mode éphémère
     socket.on('ephemereToggled', (data) => {
-        if (chatActifUserId === data.fromId) {
-            localStorage.setItem(`chat_ephemere_${chatActifUserId}`, data.actif);
+        if (chatActifConvId === data.conversationId) {
+            localStorage.setItem(`chat_ephemere_${chatActifConvId}`, data.actif);
             const check = document.getElementById('toggle-ephemeral');
             if (check) check.checked = data.actif;
-            afficherToast(data.actif ? "⏱️ Contact a activé les messages éphémères" : "⏱️ Messages éphémères désactivés par le contact");
+            afficherToast(data.actif ? "⏱️ Le mode éphémère a été activé" : "⏱️ Messages éphémères désactivés");
         }
     });
 }
 
 function gererIndicateurDeFrappe() {
-    if (!chatActifUserId || !socket) return;
-    socket.emit('typing', chatActifUserId);
+    if (!chatActifConvId || !socket) return;
+    socket.emit('typing', { conversationId: chatActifConvId, isAudio: false });
     clearTimeout(typingTimeout);
     typingTimeout = setTimeout(() => {
-        socket.emit('stopTyping', chatActifUserId);
+        socket.emit('stopTyping', chatActifConvId);
     }, 1500); 
 }
 
@@ -153,8 +161,10 @@ function naviguerVers(section, targetId = null) {
     document.getElementById('notifications-section').style.display = "none";
 
     if (section === 'messages') {
-        document.getElementById('mobile-messages-layout').classList.remove('chat-active');
-        chatActifUserId = null;
+        const layout = document.getElementById('mobile-messages-layout');
+        if(layout) layout.classList.remove('chat-active');
+        chatActifConvId = null;
+        chatActifDestinataireId = null;
     }
 
     const activeDesk = document.getElementById(`nav-${section}`);
@@ -184,7 +194,7 @@ async function inscrire() {
         document.getElementById("auth-message").innerText = "Inscription réussie ! Connectez-vous.";
     } else {
         document.getElementById("auth-message").style.color = "var(--danger)";
-        document.getElementById("auth-message").innerText = data.erreur;
+        document.getElementById("auth-message").innerText = data.erreur || data.message;
     }
 }
 
@@ -202,7 +212,7 @@ async function connecter() {
         location.reload();
     } else {
         document.getElementById("auth-message").style.color = "var(--danger)";
-        document.getElementById("auth-message").innerText = data.erreur;
+        document.getElementById("auth-message").innerText = data.erreur || data.message;
     }
 }
 
@@ -245,24 +255,24 @@ async function chargerProfil(userId = null) {
 
         if (estMonProfil) {
             labelModif.style.display = "flex"; 
-            document.getElementById("profile-stats").innerText = `Abonnements : ${data.abonnementsCount} | Publications : ${data.mesPosts.length}`;
+            document.getElementById("profile-stats").innerText = `Abonnements : ${data.followingCount} | Publications : ${data.mesPosts ? data.mesPosts.length : 0}`;
             settingsBox.innerHTML = `
                 <div style="margin-top:20px; border-top:1px solid var(--border-color); padding-top:15px;">
                     <div style="display:flex; justify-content:center; gap:10px; margin-bottom:15px;">
                         <input type="text" id="input-nouveau-pseudo" placeholder="Changer pseudo" style="width:auto;">
                         <button class="btn-secondary" onclick="modifierMonPseudo()">Modifier</button>
                     </div>
-                    <button onclick="supprimerMonCompte()" style="background:var(--danger); color:white; padding:8px 12px; border-radius:4px;">Supprimer le compte</button>
+                    <button onclick="supprimerMonCompte()" style="background:var(--danger); color:white; padding:8px 12px; border-radius:4px; border:none; cursor:pointer;">Supprimer le compte</button>
                 </div>`;
-            if(data.mesPosts.length === 0) { postsBox.innerHTML = "<p style='color:var(--text-muted);'>Aucun post.</p>"; return; }
+            if(!data.mesPosts || data.mesPosts.length === 0) { postsBox.innerHTML = "<p style='color:var(--text-muted);'>Aucun post.</p>"; return; }
             data.mesPosts.forEach(p => postsBox.appendChild(creerElementPost({...p, auteur: { pseudo: data.pseudo, avatarUrl: data.avatarUrl }, estLeMien: true})));
         } else {
             labelModif.style.display = "none"; 
-            document.getElementById("profile-stats").innerText = `Publications : ${data.postsCount}`;
+            document.getElementById("profile-stats").innerText = `Abonnés : ${data.followersCount || 0}`;
             let btnF = data.estAbonne ? `<button class="btn-secondary" onclick="desuivreUtilisateur('${data._id}')">Ne plus suivre</button>` : `<button class="btn-primary" onclick="suivreUtilisateur('${data._id}')">Suivre</button>`;
             actionBox.innerHTML = `<div style="display:flex; justify-content:center; gap:10px;">${btnF}<button class="btn-primary" onclick="naviguerVers('messages', '${data._id}')"><i class="fa-solid fa-envelope"></i> Message</button></div>`;
 
-            if(data.posts.length === 0) { postsBox.innerHTML = "<p style='color:var(--text-muted);'>Aucun post.</p>"; return; }
+            if(!data.posts || data.posts.length === 0) { postsBox.innerHTML = "<p style='color:var(--text-muted);'>Aucun post.</p>"; return; }
             data.posts.forEach(p => postsBox.appendChild(creerElementPost({...p, auteur: { pseudo: data.pseudo, avatarUrl: data.avatarUrl }, estLeMien: false})));
         }
     }
@@ -312,13 +322,17 @@ async function modifierMonPseudo() {
     });
     if (res && res.ok) {
         afficherToast("Pseudo modifié !");
+        document.getElementById('input-nouveau-pseudo').value = '';
         mettreAjourAvatarsEtInfosEnCochiffre();
         chargerProfil("me"); 
+    } else {
+        const err = await res.json();
+        afficherToast(err.erreur || "Erreur de modification");
     }
 }
 
 async function supprimerMonCompte() {
-    if (!confirm("Supprimer définitivement votre compte ?")) return;
+    if (!confirm("Supprimer définitivement votre compte et toutes vos données ?")) return;
     const res = await fetchAPI("/users/me", { method: 'DELETE' });
     if (res && res.ok) deconnecter();
 }
@@ -371,7 +385,10 @@ async function publier() {
 async function chargerFeed() {
     const res = await fetchAPI("/feed");
     if (!res || !res.ok) return;
-    const posts = await res.json();
+    
+    const data = await res.json();
+    const posts = data.posts || data || []; 
+    
     const container = document.getElementById("feed-container");
     container.innerHTML = posts.length === 0 ? "<p style='color:var(--text-muted);'>Aucun post récent.</p>" : "";
     posts.forEach(p => container.appendChild(creerElementPost(p)));
@@ -393,7 +410,7 @@ function creerElementPost(post) {
     let cmts = "";
     if (post.commentaires) {
         post.commentaires.forEach(c => {
-            cmts += `<div class="comment"><strong>@${c.auteur}</strong> : ${c.texte}</div>`;
+            cmts += `<div class="comment"><strong>@${c.auteurPseudo || c.auteur}</strong> : ${c.texte}</div>`;
         });
     }
 
@@ -410,7 +427,7 @@ function creerElementPost(post) {
         <div class="post-content" style="margin-top:10px;">${post.contenu}</div>
         ${media}
         <div class="post-actions-bar">
-            <button class="btn-action" onclick="liker('${post._id}')"><i class="fa-solid fa-heart" style="color:${post.likes.length > 0 ? 'var(--danger)':''}"></i> ${post.likes.length}</button>
+            <button class="btn-action" onclick="liker('${post._id}')"><i class="fa-solid fa-heart" style="color:${(post.likes && post.likes.length > 0) ? 'var(--danger)':''}"></i> ${post.likes ? post.likes.length : 0}</button>
         </div>
         <div class="comments-section">
             <div>${cmts}</div>
@@ -445,7 +462,7 @@ async function supprimerPost(postId) {
 async function rechercherUtilisateurs() {
     const q = document.getElementById("search-username").value.trim();
     if (!q) return;
-    const res = await fetchAPI(`/users/search?q=${q}`);
+    const res = await fetchAPI(`/users/search?q=${encodeURIComponent(q)}`);
     const users = await res.json();
     const container = document.getElementById("search-results");
     container.innerHTML = users.length === 0 ? "<p style='color:gray; font-size:12px;'>Aucun résultat.</p>" : "";
@@ -456,6 +473,25 @@ async function rechercherUtilisateurs() {
         div.innerHTML = `<span>@${u.pseudo}</span><button class="btn-primary" style="padding:4px 8px; font-size:11px;" onclick="suivreUtilisateur('${u._id}')">Suivre</button>`;
         container.appendChild(div);
     });
+}
+
+async function rechercherUtilisateursMobile() {
+    const query = document.getElementById("mob-search-input").value.trim();
+    const container = document.getElementById("mob-search-results-container");
+    if (!query) { container.innerHTML = ""; return; }
+
+    const res = await fetchAPI(`/users/search?q=${encodeURIComponent(query)}`);
+    if (res && res.ok) {
+        const users = await res.json();
+        container.innerHTML = users.length === 0 ? "<p style='color:gray; font-size:12px;'>Aucun membre trouvé.</p>" : "";
+        users.forEach(u => {
+            container.innerHTML += `
+                <div class="user-result" style="margin-bottom: 8px;">
+                    <span>@${u.pseudo}</span>
+                    <button class="btn-primary" style="padding: 4px 10px; font-size: 11px;" onclick="suivreUtilisateur('${u._id}'); fermerRechercheMobile();">Suivre</button>
+                </div>`;
+        });
+    }
 }
 
 async function suivreUtilisateur(userId) {
@@ -469,58 +505,80 @@ async function desuivreUtilisateur(userId) {
 }
 
 // --- MESSAGERIE EXCELLENCE UNIFIÉE ---
-async function chargerMessagerie(forceUserChatId = null) {
+async function chargerMessagerie(forceTargetUserId = null) {
     chargerStatuts(); 
-    const res = await fetchAPI("/messages/contacts");
+    const res = await fetchAPI("/conversations");
     if (res && res.ok) {
-        const contacts = await res.json();
+        const conversations = await res.json();
         const container = document.getElementById("contacts-container");
         container.innerHTML = "";
 
-        contacts.forEach(c => {
-            const av = c.avatarUrl ? `${API_URL}${c.avatarUrl}` : PAR_DEFAUT_AVATAR;
-            let snip = c.dernierMessage ? (c.dernierMessage.length > 20 ? c.dernierMessage.substring(0,20)+"..." : c.dernierMessage) : "<span class='snippet-vide'>Nouvelle discussion</span>";
+        conversations.forEach(c => {
+            const contact = c.displayProfiles && c.displayProfiles.length > 0 ? c.displayProfiles[0] : { pseudo: "Groupe", avatarUrl: null };
+            const av = contact.avatarUrl ? `${API_URL}${contact.avatarUrl}` : PAR_DEFAUT_AVATAR;
+            
+            let snip = c.lastMessage ? (c.lastMessage.texte.length > 20 ? c.lastMessage.texte.substring(0,20)+"..." : c.lastMessage.texte) : "<span class='snippet-vide'>Nouvelle discussion</span>";
             
             const div = document.createElement("div");
             div.className = "contact-item";
-            div.id = `contact-${c._id}`;
+            div.id = `conv-${c._id}`;
             div.innerHTML = `
                 <img src="${av}" class="avatar-round-mini" style="width:38px; height:38px; flex-shrink:0;">
                 <div class="contact-item-meta">
-                    <span class="contact-pseudo">@${c.pseudo}</span>
+                    <span class="contact-pseudo">@${contact.pseudo}</span>
                     <span class="contact-snippet">${snip}</span>
-                </div>`;
-            div.onclick = () => chargerDiscussion(c._id, true);
+                </div>
+                ${c.unreadCount > 0 ? `<span class="badge-unread">${c.unreadCount}</span>` : ''}`;
+            
+            div.onclick = () => chargerDiscussion(c._id, contact._id, contact.pseudo, true);
             container.appendChild(div);
         });
-        if (forceUserChatId) chargerDiscussion(forceUserChatId, true);
+
+        if (forceTargetUserId) {
+            ouvrirOuCreerConversation(forceTargetUserId);
+        }
     }
 }
 
-async function chargerDiscussion(userId, forcerScroll = false) {
-    chatActifUserId = userId;
-    const res = await fetchAPI(`/messages/${userId}`);
+async function ouvrirOuCreerConversation(targetUserId) {
+    const res = await fetchAPI("/conversations", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ participantIds: [targetUserId], isGroup: false })
+    });
+    if (res && res.ok) {
+        const conv = await res.json();
+        chargerDiscussion(conv._id, targetUserId, "Discussion", true);
+    }
+}
+
+async function chargerDiscussion(convId, destinataireId, nomDestinataire, forcerScroll = false) {
+    chatActifConvId = convId;
+    chatActifDestinataireId = destinataireId;
+
+    const res = await fetchAPI(`/conversations/${convId}/messages`);
     if (res && res.ok) {
         const msgs = await res.json();
         const container = document.getElementById("messages-history");
         
-        // Application de la couleur sauvegardée pour le chat
-        const savedColor = localStorage.getItem(`chat_color_${userId}`) || '#dfb142';
+        // Settings visuels
+        const savedColor = localStorage.getItem(`chat_color_${convId}`) || '#dfb142';
         appliquerCouleurChat(savedColor);
         const picker = document.getElementById('chat-color-picker');
         if (picker) picker.value = savedColor;
         
-        // Application du fond d'écran sauvegardé pour le chat
-        const savedBg = localStorage.getItem(`chat_bg_${userId}`) || 'default';
+        const savedBg = localStorage.getItem(`chat_bg_${convId}`) || 'default';
         appliquerFondChat(savedBg);
         const bgSelect = document.getElementById('chat-bg-select');
         if (bgSelect) bgSelect.value = savedBg;
 
         document.querySelectorAll('.contact-item').forEach(el => el.classList.remove('active'));
-        const activeItem = document.getElementById(`contact-${userId}`);
-        if (activeItem) {
-            activeItem.classList.add('active');
-            document.getElementById("chat-header-text").innerText = activeItem.querySelector('.contact-pseudo').innerText;
+        const activeItem = document.getElementById(`conv-${convId}`);
+        if (activeItem) activeItem.classList.add('active');
+        
+        const headerText = document.getElementById("chat-header-text");
+        if (headerText) {
+            if (nomDestinataire) headerText.innerText = `@${nomDestinataire}`;
+            else if (activeItem) headerText.innerText = activeItem.querySelector('.contact-pseudo').innerText;
         }
 
         const etatActuel = JSON.stringify(msgs);
@@ -528,13 +586,18 @@ async function chargerDiscussion(userId, forcerScroll = false) {
             container.innerHTML = "";
             msgs.forEach(m => {
                 const heure = new Date(m.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                const estMoi = m.fromId !== userId;
+                
+                let monId = null;
+                const tokenStr = localStorage.getItem("social_token");
+                if(tokenStr) monId = JSON.parse(atob(tokenStr.split('.')[1])).id;
+                
+                const estMoi = m.fromId === monId;
                 
                 let cocheHTML = "";
                 if (estMoi) {
-                    if (m.status === 'read') cocheHTML = `<span class="msg-status-tick tick-read"><i class="fa-solid fa-check-double"></i></span>`;
-                    else if (m.status === 'delivered') cocheHTML = `<span class="msg-status-tick tick-delivered"><i class="fa-solid fa-check-double"></i></span>`;
-                    else cocheHTML = `<span class="msg-status-tick tick-sent"><i class="fa-solid fa-check"></i></span>`;
+                    const estLu = m.readBy && m.readBy.some(r => r.userId !== monId);
+                    cocheHTML = estLu ? `<span class="msg-status-tick tick-read"><i class="fa-solid fa-check-double"></i></span>` 
+                                      : `<span class="msg-status-tick tick-sent"><i class="fa-solid fa-check"></i></span>`;
                 }
 
                 let contenuHTML = m.texte || "";
@@ -544,37 +607,57 @@ async function chargerDiscussion(userId, forcerScroll = false) {
                     contenuHTML = `<img src="${API_URL}${m.mediaUrl}" style="max-width: 200px; border-radius: 8px;"><br>${m.texte || ""}`;
                 }
 
-                // Bouton de suppression individuelle
-                const btnSupprimer = `<button class="btn-delete-msg" onclick="supprimerMessage('${m._id}')"><i class="fa-solid fa-trash"></i></button>`;
+                const btnSupprimer = estMoi ? `<button class="btn-delete-msg" onclick="supprimerMessage('${m._id}')"><i class="fa-solid fa-trash"></i></button>` : '';
 
                 const div = document.createElement("div");
                 div.className = `message-bubble ${estMoi ? 'sent' : 'received'}`;
                 div.innerHTML = `${contenuHTML} <span class="msg-timestamp">${heure} ${cocheHTML}</span> ${btnSupprimer}`;
                 container.appendChild(div);
             });
-
             memoireDiscussionState = etatActuel;
             if (forcerScroll) container.scrollTop = container.scrollHeight;
         }
 
         document.getElementById("chat-input-block").style.display = "flex";
-        document.getElementById("mobile-messages-layout").classList.add("chat-active");
+        const mobLayout = document.getElementById("mobile-messages-layout");
+        if(mobLayout) mobLayout.classList.add("chat-active");
         
-        if (socket && forcerScroll) socket.emit('markAsRead', userId);
+        await fetchAPI(`/conversations/${convId}/read`, { method: "POST" });
     }
 }
 
 async function envoyerMessage() {
     const input = document.getElementById("message-text");
-    if (!input.value.trim() || !chatActifUserId) return;
+    if (!input.value.trim() || !chatActifConvId) return;
 
-    if (socket) socket.emit('stopTyping', chatActifUserId);
+    if (socket) socket.emit('stopTyping', chatActifConvId);
 
-    const res = await fetchAPI(`/messages/${chatActifUserId}`, {
+    const res = await fetchAPI(`/conversations/${chatActifConvId}/messages`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ texte: input.value })
     });
-    if (res && res.ok) { input.value = ""; chargerDiscussion(chatActifUserId, true); chargerMessagerie(); }
+    if (res && res.ok) { 
+        input.value = ""; 
+        chargerDiscussion(chatActifConvId, chatActifDestinataireId, null, true); 
+        chargerMessagerie(); 
+    }
+}
+
+async function envoyerMediaMessage(event) {
+    const file = event.target.files[0];
+    if (!file || !chatActifConvId) return;
+
+    const formData = new FormData();
+    formData.append("media", file);
+
+    const res = await fetchAPI(`/conversations/${chatActifConvId}/messages`, {
+        method: "POST", body: formData
+    });
+    if (res && res.ok) {
+        event.target.value = "";
+        chargerDiscussion(chatActifConvId, chatActifDestinataireId, null, true);
+        chargerMessagerie();
+    }
 }
 
 // --- GESTION DU PANNEAU DE PARAMÈTRES ---
@@ -583,22 +666,26 @@ function toggleChatSettings() {
     if (!drawer) return;
     drawer.classList.toggle('hidden');
     
-    // Charger les paramètres actuels du contact actif
-    if (!drawer.classList.contains('hidden') && chatActifUserId) {
-        chargerParametresChat(chatActifUserId);
+    if (!drawer.classList.contains('hidden') && chatActifConvId) {
+        chargerParametresChat(chatActifConvId);
     }
 }
 
-function chargerParametresChat(userId) {
-    const color = localStorage.getItem(`chat_color_${userId}`) || '#dfb142';
-    const bg = localStorage.getItem(`chat_bg_${userId}`) || 'default';
-    const isEphemere = localStorage.getItem(`chat_ephemere_${userId}`) === 'true';
-    const isMuted = localStorage.getItem(`chat_mute_${userId}`) === 'true';
+function chargerParametresChat(convId) {
+    const color = localStorage.getItem(`chat_color_${convId}`) || '#dfb142';
+    const bg = localStorage.getItem(`chat_bg_${convId}`) || 'default';
+    const isEphemere = localStorage.getItem(`chat_ephemere_${convId}`) === 'true';
+    const isMuted = localStorage.getItem(`chat_mute_${convId}`) === 'true';
 
-    document.getElementById('chat-color-picker').value = color;
-    document.getElementById('chat-bg-select').value = bg;
-    document.getElementById('toggle-ephemeral').checked = isEphemere;
-    document.getElementById('toggle-mute').checked = isMuted;
+    const colorPicker = document.getElementById('chat-color-picker');
+    const bgSelect = document.getElementById('chat-bg-select');
+    const toggleEph = document.getElementById('toggle-ephemeral');
+    const toggleM = document.getElementById('toggle-mute');
+
+    if(colorPicker) colorPicker.value = color;
+    if(bgSelect) bgSelect.value = bg;
+    if(toggleEph) toggleEph.checked = isEphemere;
+    if(toggleM) toggleM.checked = isMuted;
 
     appliquerCouleurChat(color);
     appliquerFondChat(bg);
@@ -606,8 +693,8 @@ function chargerParametresChat(userId) {
 
 // --- FOND D'ÉCRAN PERSONNALISÉ ---
 function changerFondChat(typeFond) {
-    if (!chatActifUserId) return;
-    localStorage.setItem(`chat_bg_${chatActifUserId}`, typeFond);
+    if (!chatActifConvId) return;
+    localStorage.setItem(`chat_bg_${chatActifConvId}`, typeFond);
     appliquerFondChat(typeFond);
 }
 
@@ -622,35 +709,22 @@ function appliquerFondChat(typeFond) {
 
 // --- MESSAGES ÉPHÉMÈRES ---
 function toggleEphemere(actif) {
-    if (!chatActifUserId) return;
-    localStorage.setItem(`chat_ephemere_${chatActifUserId}`, actif);
+    if (!chatActifConvId) return;
+    localStorage.setItem(`chat_ephemere_${chatActifConvId}`, actif);
     afficherToast(actif ? "⏱️ Messages éphémères activés (24h)" : "⏱️ Messages éphémères désactivés");
-    if (socket) socket.emit('toggleEphemere', { cibleId: chatActifUserId, actif });
+    if (socket) socket.emit('toggleEphemere', { conversationId: chatActifConvId, actif });
 }
 
 // --- MODE SILENCE ---
 function toggleMute(actif) {
-    if (!chatActifUserId) return;
-    localStorage.setItem(`chat_mute_${chatActifUserId}`, actif);
+    if (!chatActifConvId) return;
+    localStorage.setItem(`chat_mute_${chatActifConvId}`, actif);
     afficherToast(actif ? "🔇 Discussion en mode silence" : "🔔 Notifications réactivées");
 }
 
-// --- VIDER L'HISTORIQUE ---
-async function viderHistoriqueChat() {
-    if (!chatActifUserId) return;
-    if (!confirm("⚠️ Attention : Voulez-vous vraiment supprimer tous les messages de cette conversation pour vous et votre contact ?")) return;
-
-    const res = await fetchAPI(`/messages/clear/${chatActifUserId}`, { method: "DELETE" });
-    if (res && res.ok) {
-        document.getElementById("messages-history").innerHTML = "";
-        memoireDiscussionState = "";
-        afficherToast("Conversation vidée avec succès");
-        toggleChatSettings();
-    }
-}
-
 function fermerChatMobile() {
-    chatActifUserId = null; 
+    chatActifConvId = null; 
+    chatActifDestinataireId = null;
     document.getElementById("mobile-messages-layout").classList.remove("chat-active");
 }
 
@@ -690,14 +764,14 @@ function arreterEtEnvoyerVocal(e) {
         mediaRecorder.onstop = async () => {
             fermerIndicateurVocal();
             const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
-            if (audioBlob.size > 0 && chatActifUserId) {
+            if (audioBlob.size > 0 && chatActifConvId) {
                 const formData = new FormData();
                 formData.append("media", audioBlob, "vocal.webm");
-                const res = await fetchAPI(`/messages/${chatActifUserId}`, {
+                const res = await fetchAPI(`/conversations/${chatActifConvId}/messages`, {
                     method: "POST", body: formData
                 });
                 if (res && res.ok) {
-                    chargerDiscussion(chatActifUserId, true);
+                    chargerDiscussion(chatActifConvId, chatActifDestinataireId, null, true);
                     chargerMessagerie();
                 }
             }
@@ -850,7 +924,7 @@ function demarrerVisionneuseStatut(statusArray) {
         if (index >= statusArray.length) { fermerVisionneuseStatut(); return; }
         const s = statusArray[index];
         
-        await fetchAPI(`/statuses/${s._id}/read`, { method: "POST" });
+        await fetchAPI(`/statuses/${s._id}/view`, { method: "POST" });
 
         document.getElementById('viewer-author-name').innerText = `@${s.author}`;
         document.getElementById('viewer-author-avatar').src = s.avatarUrl ? `${API_URL}${s.avatarUrl}` : PAR_DEFAUT_AVATAR;
@@ -881,8 +955,8 @@ function fermerVisionneuseStatut() {
 
 // --- PERSONNALISATION DES COULEURS ---
 function changerCouleurChat(couleur) {
-    if (!chatActifUserId) return;
-    localStorage.setItem(`chat_color_${chatActifUserId}`, couleur);
+    if (!chatActifConvId) return;
+    localStorage.setItem(`chat_color_${chatActifConvId}`, couleur);
     appliquerCouleurChat(couleur);
 }
 
@@ -909,71 +983,9 @@ async function supprimerMessage(messageId) {
     const res = await fetchAPI(`/messages/${messageId}`, { method: "DELETE" });
     if (res && res.ok) {
         afficherToast("Message supprimé");
-        // Recharger le chat immédiatement pour l'utilisateur
-        chargerDiscussion(chatActifUserId, false); 
-        // Avertir l'autre utilisateur via Socket.io en direct
-        if (socket && chatActifUserId) {
-            socket.emit('deleteMessage', { messageId, cibleId: chatActifUserId });
+        chargerDiscussion(chatActifConvId, chatActifDestinataireId, null, false); 
+        if (socket && chatActifConvId) {
+            socket.emit('deleteMessage', { messageId, conversationId: chatActifConvId });
         }
     }
-}
-
-async function rechercherUtilisateursMobile() {
-    const query = document.getElementById("mob-search-input").value.trim();
-    const container = document.getElementById("mob-search-results-container");
-    if (!query) { container.innerHTML = ""; return; }
-
-    const res = await fetchAPI(`/users/search?q=${query}`);
-    if (res && res.ok) {
-        const users = await res.json();
-        container.innerHTML = users.length === 0 ? "<p style='color:gray; font-size:12px;'>Aucun membre trouvé.</p>" : "";
-        users.forEach(u => {
-            container.innerHTML += `
-                <div class="user-result" style="margin-bottom: 8px;">
-                    <span>@${u.pseudo}</span>
-                    <button class="btn-primary" style="padding: 4px 10px; font-size: 11px;" onclick="suivreUtilisateur('${u._id}'); fermerRechercheMobile();">Suivre</button>
-                </div>`;
-        });
-    }
-}
-
-// Exemple type pour la recherche dynamique d'utilisateurs
-const searchInput = document.getElementById('search-user-input'); // Adaptez l'ID selon votre HTML
-const searchResultsContainer = document.getElementById('search-results-container');
-
-if (searchInput) {
-    searchInput.addEventListener('input', async (e) => {
-        const query = e.target.value.trim();
-        
-        if (query.length === 0) {
-            searchResultsContainer.innerHTML = '';
-            return;
-        }
-
-        try {
-            const response = await fetch(`/api/users/search?q=${encodeURIComponent(query)}`, {
-                headers: {
-                    'Authorization': `Bearer ${localStorage.getItem('token')}` // Si vous utilisez JWT
-                }
-            });
-            
-            if (!response.ok) throw new Error('Erreur lors de la recherche');
-            
-            const users = await response.json();
-            
-            // Affichage des résultats
-            searchResultsContainer.innerHTML = '';
-            users.forEach(user => {
-                const userElement = document.createElement('div');
-                userElement.className = 'user-result';
-                userElement.innerHTML = `
-                    <span>${user.pseudo || user.username}</span>
-                    <button class="btn-secondary" onclick="startChat('${user._id}')">Discuter</button>
-                `;
-                searchResultsContainer.appendChild(userElement);
-            });
-        } catch (error) {
-            console.error('Erreur de recherche :', error);
-        }
-    });
 }
