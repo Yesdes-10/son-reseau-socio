@@ -109,6 +109,82 @@
                                 <button class="btn-primary" onclick="publier()">Publier</button>
                             </div>
                         </div>
+
+                        <!-- Conteneur principal du flux vidéo (Reels) -->
+                        <div class="reels-feed-container" id="reels-feed">
+                            <!-- Carte Reel 1 -->
+                            <div class="reel-item" data-video-id="101">
+                                <video class="reel-video" src="https://votre-api.com/media/video-test.mp4" loop playsinline muted></video>
+                                <div class="reel-big-heart"><i class="fa-solid fa-heart"></i></div>
+                                <div class="reel-gradient-overlay"></div>
+                                <div class="reel-header">
+                                    <div class="reel-user-info">
+                                        <img src="https://www.w3schools.com/howto/img_avatar.png" class="reel-avatar" alt="Avatar">
+                                        <span class="reel-username">cris7iano</span>
+                                        <span class="reel-badge">Suggestions</span>
+                                    </div>
+                                    <button class="btn-reel-follow">Suivre</button>
+                                </div>
+                                <div class="reel-actions-bottom">
+                                    <button class="reel-action-btn btn-like" onclick="likerVideo('101')">
+                                        <i class="fa-regular fa-heart"></i>
+                                        <span>325 K</span>
+                                    </button>
+                                    <button class="reel-action-btn" onclick="ouvrirCommentaires('101')">
+                                        <i class="fa-regular fa-comment"></i>
+                                        <span>1 381</span>
+                                    </button>
+                                    <button class="reel-action-btn" onclick="partagerVideo('101')">
+                                        <i class="fa-solid fa-retweet"></i>
+                                        <span>6 995</span>
+                                    </button>
+                                    <button class="reel-action-btn" onclick="envoyerMessageVideo('101')">
+                                        <i class="fa-regular fa-paper-plane"></i>
+                                        <span>13,6 K</span>
+                                    </button>
+                                </div>
+                                <button class="reel-mute-btn" onclick="toggleMuteReel(this)">
+                                    <i class="fa-solid fa-volume-xmark"></i>
+                                </button>
+                            </div>
+
+                            <!-- Carte Reel 2 -->
+                            <div class="reel-item" data-video-id="102">
+                                <video class="reel-video" src="https://votre-api.com/media/video-test.mp4" loop playsinline muted></video>
+                                <div class="reel-big-heart"><i class="fa-solid fa-heart"></i></div>
+                                <div class="reel-gradient-overlay"></div>
+                                <div class="reel-header">
+                                    <div class="reel-user-info">
+                                        <img src="https://www.w3schools.com/howto/img_avatar.png" class="reel-avatar" alt="Avatar">
+                                        <span class="reel-username">jo_official</span>
+                                        <span class="reel-badge">Tendances</span>
+                                    </div>
+                                    <button class="btn-reel-follow">Suivre</button>
+                                </div>
+                                <div class="reel-actions-bottom">
+                                    <button class="reel-action-btn btn-like" onclick="likerVideo('102')">
+                                        <i class="fa-regular fa-heart"></i>
+                                        <span>1,2 M</span>
+                                    </button>
+                                    <button class="reel-action-btn" onclick="ouvrirCommentaires('102')">
+                                        <i class="fa-regular fa-comment"></i>
+                                        <span>4 520</span>
+                                    </button>
+                                    <button class="reel-action-btn" onclick="partagerVideo('102')">
+                                        <i class="fa-solid fa-retweet"></i>
+                                        <span>12,1 K</span>
+                                    </button>
+                                    <button class="reel-action-btn" onclick="envoyerMessageVideo('102')">
+                                        <i class="fa-regular fa-paper-plane"></i>
+                                        <span>45 K</span>
+                                    </button>
+                                </div>
+                                <button class="reel-mute-btn" onclick="toggleMuteReel(this)">
+                                    <i class="fa-solid fa-volume-xmark"></i>
+                                </button>
+                            </div>
+                        </div>
+
                         <div class="divider"><span>PUBLICATIONS RÉCENTES</span></div>
                         <div id="feed-container"></div>
                     </div>
@@ -132,7 +208,6 @@
 
                     <!-- MESSAGES -->
                     <div id="messages-section" style="display: none;">
-                        <h2 class="section-title desktop-only">Messagerie Privée</h2>
                         <div class="messages-layout" id="mobile-messages-layout">
                             
                             <div class="contacts-sidebar" id="contacts-sidebar">
@@ -151,28 +226,48 @@
                             </div>
 
                             <div class="chat-window" id="chat-window">
-                                <!-- EN-TÊTE DE LA DISCUSSION -->
-                                <div id="chat-header" class="chat-header-pro">
-                                    <div class="chat-header-user-info">
-                                        <button class="mobile-only btn-icon" onclick="fermerChatMobile()">
-                                            <i class="fa-solid fa-arrow-left"></i>
-                                        </button>
-                                        <img id="chat-header-avatar" src="/default-avatar.png" class="avatar-sm" style="display:none;">
-                                        <div class="chat-header-text-block">
-                                            <span id="chat-header-text" class="contact-name">Sélectionnez un contact</span>
-                                            <span id="chat-header-status" class="contact-status-sub">en ligne</span>
+                                <!-- En-tête de messagerie unifié Jo Socio -->
+                                <header class="josocio-msg-header">
+                                    <div class="msg-header-top">
+                                        <div style="display:flex; align-items:center; gap:10px;">
+                                            <button class="mobile-only btn-icon" onclick="fermerChatMobile()">
+                                                <i class="fa-solid fa-arrow-left"></i>
+                                            </button>
+                                            <h1 class="msg-app-title">Jo Socio</h1>
+                                        </div>
+                                        <div class="msg-header-actions">
+                                            <button class="header-icon-btn" onclick="ouvrirCameraStatut()" title="Créer un statut">
+                                                <i class="fa-solid fa-camera"></i>
+                                            </button>
+                                            <button class="header-icon-btn btn-settings-open" onclick="toggleModaleParametres()" title="Paramètres Jo Socio">
+                                                <i class="fa-solid fa-gear"></i>
+                                            </button>
+                                            <button class="header-icon-btn" onclick="toggleChatSettings()" title="Paramètres de la discussion">
+                                                <i class="fa-solid fa-sliders"></i>
+                                            </button>
                                         </div>
                                     </div>
-                                    
-                                    <!-- Bouton pour ouvrir le panneau de paramètres professionnels -->
-                                    <div class="chat-header-actions">
-                                        <button class="btn-icon" onclick="toggleChatSettings()" title="Paramètres de la discussion">
-                                            <i class="fa-solid fa-sliders"></i>
-                                        </button>
-                                    </div>
-                                </div>
 
-                                <!-- PANNEAU LATÉRAL DE PARAMÈTRES (DRAWER) -->
+                                    <div id="chat-header-user-info" style="padding: 4px 0; font-size: 14px; font-weight: 600; color: var(--gold);">
+                                        <span id="chat-header-text">Sélectionnez un contact pour discuter</span>
+                                    </div>
+
+                                    <div class="msg-search-container">
+                                        <div class="msg-search-bar">
+                                            <i class="fa-solid fa-magnifying-glass search-icon"></i>
+                                            <input type="text" id="msg-search-input" placeholder="Rechercher dans les messages ou l'IA..." autocomplete="off">
+                                        </div>
+                                    </div>
+
+                                    <nav class="msg-filter-chips-container" id="msg-filters">
+                                        <button class="filter-chip active" data-filter="toutes"><span>Toutes</span></button>
+                                        <button class="filter-chip" data-filter="non-lues"><span>Non lues</span><span class="chip-badge">10</span></button>
+                                        <button class="filter-chip" data-filter="favoris"><span>Favoris</span></button>
+                                        <button class="filter-chip" data-filter="groupes"><span>Groupes</span><span class="chip-badge">8</span></button>
+                                    </nav>
+                                </header>
+
+                                <!-- PANNEAU LATÉRAL DE PARAMÈTRES DU CHAT (DRAWER) -->
                                 <div id="chat-settings-drawer" class="chat-drawer hidden">
                                     <div class="drawer-header">
                                         <h3>Paramètres de la discussion</h3>
@@ -180,7 +275,6 @@
                                     </div>
                                     
                                     <div class="drawer-body">
-                                        <!-- Section 1 : Design & Apparence -->
                                         <div class="settings-section">
                                             <h4><i class="fa-solid fa-wand-magic-sparkles"></i> Apparence</h4>
                                             <div class="setting-item">
@@ -198,7 +292,6 @@
                                             </div>
                                         </div>
 
-                                        <!-- Section 2 : Confidentialité (Le "Jamais Vu") -->
                                         <div class="settings-section">
                                             <h4><i class="fa-solid fa-user-shield"></i> Confidentialité</h4>
                                             <div class="setting-item toggle-item">
@@ -217,13 +310,12 @@
                                                     <span class="setting-desc">Couper les notifications</span>
                                                 </div>
                                                 <label class="switch">
-                                                    <input type="checkbox" id="toggle-mute" onchange="toggleMute(this.checked)">
+                                                    <input type="checkbox" id="toggle-mute" onchange="toggleMuteChat(this.checked)">
                                                     <span class="slider round"></span>
                                                 </label>
                                             </div>
                                         </div>
 
-                                        <!-- Section 3 : Actions Danger -->
                                         <div class="settings-section danger-zone">
                                             <h4><i class="fa-solid fa-triangle-exclamation"></i> Zone de danger</h4>
                                             <button class="btn-action-danger" onclick="rechercherDansChat()">
@@ -238,13 +330,9 @@
                                         </div>
                                     </div>
                                 </div>
-                                    
-                                    <!-- L'input pour changer la couleur de la discussion -->
-                                    <input type="color" id="chat-color-picker" onchange="changerCouleurChat(this.value)" title="Personnaliser la couleur du chat">
-                                </div>
                                 
                                 <div id="messages-history" class="messages-history"></div>
-    
+
                                 <div id="typing-indicator" style="display: none; padding: 5px 20px; font-size: 11px; color: var(--gold); font-style: italic;">
                                     L'utilisateur écrit...
                                 </div>
@@ -268,7 +356,7 @@
                                         <i class="fa-solid fa-microphone"></i>
                                     </button>
                                 </div>
-                            </div>
+                            </div> <!-- Fin #chat-window -->
                         </div>
                     </div>
 
@@ -297,6 +385,72 @@
         
         <!-- MODALES ET OVERLAYS -->
         <div id="toast-container"></div>
+
+        <!-- MODALE PARAMÈTRES JO SOCIO -->
+        <div class="settings-modal-overlay" id="josocio-settings-modal" onclick="fermerModaleSiBackground(event)">
+            <div class="settings-modal-content">
+                <header class="settings-modal-header">
+                    <h2>Paramètres Jo Socio</h2>
+                    <button class="btn-close-modal" onclick="toggleModaleParametres()"><i class="fa-solid fa-xmark"></i></button>
+                </header>
+                <div class="settings-profile-card">
+                    <img src="https://www.w3schools.com/howto/img_avatar.png" alt="Avatar" class="profile-card-img">
+                    <div class="profile-card-info">
+                        <span class="profile-name">Votre Nom</span>
+                        <span class="profile-status">En ligne sur Jo Socio ⚡</span>
+                    </div>
+                    <button class="btn-edit-profile" title="Modifier le profil"><i class="fa-solid fa-pen-to-square"></i></button>
+                </div>
+                <div class="settings-options-list">
+                    <div class="settings-item" onclick="ouvrirSection('compte')">
+                        <div class="settings-icon-wrapper blue"><i class="fa-solid fa-user-shield"></i></div>
+                        <div class="settings-item-text">
+                            <span class="settings-title">Compte & Sécurité</span>
+                            <span class="settings-subtitle">Confidentialité, mot de passe, A2F</span>
+                        </div>
+                        <i class="fa-solid fa-chevron-right settings-arrow"></i>
+                    </div>
+                    <div class="settings-item" onclick="ouvrirSection('chats')">
+                        <div class="settings-icon-wrapper green"><i class="fa-solid fa-comments"></i></div>
+                        <div class="settings-item-text">
+                            <span class="settings-title">Discussions & Médias</span>
+                            <span class="settings-subtitle">Thèmes, fond d'écran, sauvegarde auto</span>
+                        </div>
+                        <i class="fa-solid fa-chevron-right settings-arrow"></i>
+                    </div>
+                    <div class="settings-item" onclick="ouvrirSection('notifs')">
+                        <div class="settings-icon-wrapper orange"><i class="fa-solid fa-bell"></i></div>
+                        <div class="settings-item-text">
+                            <span class="settings-title">Notifications & Sons</span>
+                            <span class="settings-subtitle">Vibreur, sons des messages et Reels</span>
+                        </div>
+                        <i class="fa-solid fa-chevron-right settings-arrow"></i>
+                    </div>
+                    <div class="settings-item" onclick="ouvrirSection('stockage')">
+                        <div class="settings-icon-wrapper purple"><i class="fa-solid fa-database"></i></div>
+                        <div class="settings-item-text">
+                            <span class="settings-title">Stockage & Données</span>
+                            <span class="settings-subtitle">Réseau, téléchargement auto (Wi-Fi/4G)</span>
+                        </div>
+                        <i class="fa-solid fa-chevron-right settings-arrow"></i>
+                    </div>
+                    <div class="settings-item" onclick="ouvrirSection('ia')">
+                        <div class="settings-icon-wrapper gold"><i class="fa-solid fa-wand-magic-sparkles"></i></div>
+                        <div class="settings-item-text">
+                            <span class="settings-title">Assistant IA Jo Socio</span>
+                            <span class="settings-subtitle">Personnalisation du chatbot et réponses auto</span>
+                        </div>
+                        <i class="fa-solid fa-chevron-right settings-arrow"></i>
+                    </div>
+                    <div class="settings-divider"></div>
+                    <div class="settings-item action-logout" onclick="deconnecterJoSocio()">
+                        <div class="settings-icon-wrapper red"><i class="fa-solid fa-right-from-bracket"></i></div>
+                        <div class="settings-item-text"><span class="settings-title text-red">Se déconnecter</span></div>
+                    </div>
+                </div>
+                <footer class="settings-footer"><span>Jo Socio Web & Mobile v2.4.0</span></footer>
+            </div>
+        </div>
 
         <div id="mobile-search-overlay" class="modal-overlay" style="display: none;" onclick="if(event.target === this) fermerRechercheMobile()">
             <div class="modal-box" style="position: absolute; top: 65px; width: 92%; max-width: 400px; padding: 15px;">
@@ -358,8 +512,6 @@
 
     <!-- LIBRAIRIES EXTERNES -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.1/cropper.min.js"></script>
-    
-    <!-- ATTENTION : SOCKET.IO DOIT ÊTRE CHARGÉ AVANT APP.JS -->
     <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
     <script src="app.js"></script>
 

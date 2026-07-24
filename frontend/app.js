@@ -19,7 +19,7 @@ let recordingSeconds = 0;
 let socket = null;
 let typingTimeout = null;
 
-// --- REQUÊTES GENERALES AUX EN-TÊTES API ---
+// --- REQUÊTES GÉNÉRALES AUX EN-TÊTES API ---
 async function fetchAPI(endpoint, options = {}) {
     const token = localStorage.getItem("social_token");
     options.headers = {
@@ -58,6 +58,7 @@ function afficherToast(message) {
     }, 3000);
 }
 
+// --- INITIALISATION AU CHARGEMENT DE LA PAGE ---
 window.onload = () => {
     const token = localStorage.getItem("social_token");
     if (token) {
@@ -67,10 +68,9 @@ window.onload = () => {
         naviguerVers('feed');
         actualiserBadgeNotifications(true);
         
-        // --- INITIALISATION DU MOTEUR WEBSOCKETS ---
+        // Initialisation WebSockets
         initialiserWebSockets(token);
 
-        // Écouteur d'événement pour l'indicateur de frappe
         const inputMessage = document.getElementById("message-text");
         if(inputMessage) {
             inputMessage.addEventListener('input', gererIndicateurDeFrappe);
@@ -78,10 +78,18 @@ window.onload = () => {
     }
 };
 
+document.addEventListener("DOMContentLoaded", () => {
+    initialiserReelsObserver();
+    initialiserDoubleTapReels();
+    initialiserFiltresMessagerie();
+    initialiserRechercheMessagerie();
+});
+
 // ============================================================================
 // MOTEUR WEBSOCKETS (ZÉRO LATENCE)
 // ============================================================================
 function initialiserWebSockets(token) {
+    if (typeof io === "undefined") return;
     socket = io(API_URL, { auth: { token } });
 
     socket.on('newMessage', (msg) => {
@@ -99,7 +107,7 @@ function initialiserWebSockets(token) {
         if (chatActifUserId === userId) {
             document.getElementById('typing-indicator').style.display = 'block';
             const hist = document.getElementById("messages-history");
-            hist.scrollTop = hist.scrollHeight;
+            if (hist) hist.scrollTop = hist.scrollHeight;
         }
     });
 
@@ -167,7 +175,7 @@ async function inscrire() {
         document.getElementById("auth-message").innerText = "Inscription réussie ! Connectez-vous.";
     } else {
         document.getElementById("auth-message").style.color = "var(--danger)";
-        document.getElementById("auth-message").innerText = data.erreur;
+        document.getElementById("auth-message").innerText = data.erreur || "Erreur lors de l'inscription.";
     }
 }
 
@@ -185,7 +193,7 @@ async function connecter() {
         location.reload();
     } else {
         document.getElementById("auth-message").style.color = "var(--danger)";
-        document.getElementById("auth-message").innerText = data.erreur;
+        document.getElementById("auth-message").innerText = data.erreur || "Connexion échouée.";
     }
 }
 
@@ -200,10 +208,14 @@ async function mettreAjourAvatarsEtInfosEnCochiffre() {
     if (res && res.ok) {
         const moi = await res.json();
         const av = moi.avatarUrl ? `${API_URL}${moi.avatarUrl}` : PAR_DEFAUT_AVATAR;
-        document.getElementById("sidebar-avatar").src = av;
-        document.getElementById("feed-creator-avatar").src = av;
-        document.getElementById("my-status-avatar-img").src = av;
-        document.getElementById("sidebar-pseudo").innerText = "@" + moi.pseudo;
+        const sidebarAv = document.getElementById("sidebar-avatar");
+        const feedAv = document.getElementById("feed-creator-avatar");
+        const statusAv = document.getElementById("my-status-avatar-img");
+        if(sidebarAv) sidebarAv.src = av;
+        if(feedAv) feedAv.src = av;
+        if(statusAv) statusAv.src = av;
+        const sidebarPseudo = document.getElementById("sidebar-pseudo");
+        if(sidebarPseudo) sidebarPseudo.innerText = "@" + moi.pseudo;
     }
 }
 
@@ -227,25 +239,25 @@ async function chargerProfil(userId = null) {
         actionBox.innerHTML = ""; settingsBox.innerHTML = ""; postsBox.innerHTML = "";
 
         if (estMonProfil) {
-            labelModif.style.display = "flex"; 
-            document.getElementById("profile-stats").innerText = `Abonnements : ${data.abonnementsCount} | Publications : ${data.mesPosts.length}`;
+            if(labelModif) labelModif.style.display = "flex"; 
+            document.getElementById("profile-stats").innerText = `Abonnements : ${data.abonnementsCount || 0} | Publications : ${data.mesPosts ? data.mesPosts.length : 0}`;
             settingsBox.innerHTML = `
                 <div style="margin-top:20px; border-top:1px solid var(--border-color); padding-top:15px;">
                     <div style="display:flex; justify-content:center; gap:10px; margin-bottom:15px;">
                         <input type="text" id="input-nouveau-pseudo" placeholder="Changer pseudo" style="width:auto;">
                         <button class="btn-secondary" onclick="modifierMonPseudo()">Modifier</button>
                     </div>
-                    <button onclick="supprimerMonCompte()" style="background:var(--danger); color:white; padding:8px 12px; border-radius:4px;">Supprimer le compte</button>
+                    <button onclick="supprimerMonCompte()" style="background:var(--danger); color:white; padding:8px 12px; border-radius:4px; border:none; cursor:pointer;">Supprimer le compte</button>
                 </div>`;
-            if(data.mesPosts.length === 0) { postsBox.innerHTML = "<p style='color:var(--text-muted);'>Aucun post.</p>"; return; }
+            if(!data.mesPosts || data.mesPosts.length === 0) { postsBox.innerHTML = "<p style='color:var(--text-muted);'>Aucun post.</p>"; return; }
             data.mesPosts.forEach(p => postsBox.appendChild(creerElementPost({...p, auteur: { pseudo: data.pseudo, avatarUrl: data.avatarUrl }, estLeMien: true})));
         } else {
-            labelModif.style.display = "none"; 
-            document.getElementById("profile-stats").innerText = `Publications : ${data.postsCount}`;
+            if(labelModif) labelModif.style.display = "none"; 
+            document.getElementById("profile-stats").innerText = `Publications : ${data.postsCount || (data.posts ? data.posts.length : 0)}`;
             let btnF = data.estAbonne ? `<button class="btn-secondary" onclick="desuivreUtilisateur('${data._id}')">Ne plus suivre</button>` : `<button class="btn-primary" onclick="suivreUtilisateur('${data._id}')">Suivre</button>`;
             actionBox.innerHTML = `<div style="display:flex; justify-content:center; gap:10px;">${btnF}<button class="btn-primary" onclick="naviguerVers('messages', '${data._id}')"><i class="fa-solid fa-envelope"></i> Message</button></div>`;
 
-            if(data.posts.length === 0) { postsBox.innerHTML = "<p style='color:var(--text-muted);'>Aucun post.</p>"; return; }
+            if(!data.posts || data.posts.length === 0) { postsBox.innerHTML = "<p style='color:var(--text-muted);'>Aucun post.</p>"; return; }
             data.posts.forEach(p => postsBox.appendChild(creerElementPost({...p, auteur: { pseudo: data.pseudo, avatarUrl: data.avatarUrl }, estLeMien: false})));
         }
     }
@@ -260,7 +272,9 @@ function ouvrirRecadrageAvatar(event) {
         imageElement.src = e.target.result;
         document.getElementById("crop-modal").style.display = "flex";
         if (cropperInstance) cropperInstance.destroy();
-        cropperInstance = new Cropper(imageElement, { aspectRatio: 1, viewMode: 1, background: false });
+        if (typeof Cropper !== "undefined") {
+            cropperInstance = new Cropper(imageElement, { aspectRatio: 1, viewMode: 1, background: false });
+        }
     };
     reader.readAsDataURL(file);
 }
@@ -306,7 +320,7 @@ async function supprimerMonCompte() {
     if (res && res.ok) deconnecter();
 }
 
-// --- SYSTEM DE POSTS & FIL D'ACTUALITÉ ---
+// --- SYSTÈME DE POSTS & FIL D'ACTUALITÉ ---
 function previsualiserImage(event) {
     const fichier = event.target.files[0];
     if (fichier) {
@@ -323,19 +337,22 @@ function previsualiserImage(event) {
                 document.getElementById("image-preview").src = e.target.result;
                 document.getElementById("image-preview").style.display = "block";
             }
-        }
+        };
         reader.readAsDataURL(fichier);
     }
 }
 
 function annulerImage() {
     fichierImageSelectionne = null;
-    document.getElementById("post-image").value = "";
-    document.getElementById("preview-container").style.display = "none";
+    const inputImg = document.getElementById("post-image");
+    if (inputImg) inputImg.value = "";
+    const preview = document.getElementById("preview-container");
+    if (preview) preview.style.display = "none";
 }
 
 async function publier() {
-    const contenu = document.getElementById("post-content").value;
+    const inputContent = document.getElementById("post-content");
+    const contenu = inputContent ? inputContent.value : "";
     if (!contenu.trim() && !fichierImageSelectionne) return;
 
     const formData = new FormData();
@@ -344,7 +361,7 @@ async function publier() {
 
     const res = await fetchAPI("/posts", { method: "POST", body: formData });
     if (res && res.ok) {
-        document.getElementById("post-content").value = ""; 
+        if(inputContent) inputContent.value = ""; 
         annulerImage();
         afficherToast("Post partagé !");
         chargerFeed();
@@ -356,6 +373,7 @@ async function chargerFeed() {
     if (!res || !res.ok) return;
     const posts = await res.json();
     const container = document.getElementById("feed-container");
+    if(!container) return;
     container.innerHTML = posts.length === 0 ? "<p style='color:var(--text-muted);'>Aucun post récent.</p>" : "";
     posts.forEach(p => container.appendChild(creerElementPost(p)));
 }
@@ -383,22 +401,22 @@ function creerElementPost(post) {
     let btnSuppr = post.estLeMien ? `<button class="btn-action" style="color:var(--danger);" onclick="supprimerPost('${post._id}')"><i class="fa-solid fa-trash"></i></button>` : "";
     
     div.innerHTML = `
-        <div style="display:flex; justify-content:space-between;">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
             <div onclick="naviguerVers('profil', '${post.auteurId}')" style="cursor:pointer; display:inline-flex; align-items:center; gap:8px;">
                 <img src="${av}" class="avatar-round-mini">
                 <span style="font-weight:600;">@${nom}</span>
             </div>
             ${btnSuppr}
         </div>
-        <div class="post-content" style="margin-top:10px;">${post.contenu}</div>
+        <div class="post-content" style="margin-top:10px;">${post.contenu || ""}</div>
         ${media}
         <div class="post-actions-bar">
-            <button class="btn-action" onclick="liker('${post._id}')"><i class="fa-solid fa-heart" style="color:${post.likes.length > 0 ? 'var(--danger)':''}"></i> ${post.likes.length}</button>
+            <button class="btn-action" onclick="liker('${post._id}')"><i class="fa-solid fa-heart" style="color:${(post.likes && post.likes.length > 0) ? 'var(--danger)':''}"></i> ${post.likes ? post.likes.length : 0}</button>
         </div>
         <div class="comments-section">
             <div>${cmts}</div>
-            <div class="add-comment">
-                <input type="text" id="input-comment-${post._id}" placeholder="Ajouter un commentaire...">
+            <div class="add-comment" style="display:flex; gap:8px; margin-top:8px;">
+                <input type="text" id="input-comment-${post._id}" placeholder="Ajouter un commentaire..." style="flex:1;">
                 <button class="btn-action" onclick="ajouterCommentaire('${post._id}')">Envoyer</button>
             </div>
         </div>`;
@@ -407,12 +425,15 @@ function creerElementPost(post) {
 
 async function liker(postId) {
     const res = await fetchAPI(`/posts/${postId}/like`, { method: "POST" });
-    if (res && res.ok) { if(document.getElementById('feed-section').style.display === 'block') chargerFeed(); else chargerProfil(); }
+    if (res && res.ok) { 
+        if(document.getElementById('feed-section').style.display === 'block') chargerFeed(); 
+        else chargerProfil(); 
+    }
 }
 
 async function ajouterCommentaire(postId) {
     const input = document.getElementById(`input-comment-${postId}`);
-    if (!input.value.trim()) return;
+    if (!input || !input.value.trim()) return;
     const res = await fetchAPI(`/posts/${postId}/comment`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ texte: input.value })
@@ -426,11 +447,13 @@ async function supprimerPost(postId) {
 
 // --- RECHERCHE ET CONTACTS ---
 async function rechercherUtilisateurs() {
-    const q = document.getElementById("search-username").value.trim();
+    const input = document.getElementById("search-username");
+    const q = input ? input.value.trim() : "";
     if (!q) return;
     const res = await fetchAPI(`/users/search?q=${q}`);
     const users = await res.json();
     const container = document.getElementById("search-results");
+    if(!container) return;
     container.innerHTML = users.length === 0 ? "<p style='color:gray; font-size:12px;'>Aucun résultat.</p>" : "";
     
     users.forEach(u => {
@@ -458,6 +481,7 @@ async function chargerMessagerie(forceUserChatId = null) {
     if (res && res.ok) {
         const contacts = await res.json();
         const container = document.getElementById("contacts-container");
+        if(!container) return;
         container.innerHTML = "";
 
         contacts.forEach(c => {
@@ -469,9 +493,9 @@ async function chargerMessagerie(forceUserChatId = null) {
             div.id = `contact-${c._id}`;
             div.innerHTML = `
                 <img src="${av}" class="avatar-round-mini" style="width:38px; height:38px; flex-shrink:0;">
-                <div class="contact-item-meta">
-                    <span class="contact-pseudo">@${c.pseudo}</span>
-                    <span class="contact-snippet">${snip}</span>
+                <div class="contact-item-meta" style="overflow:hidden;">
+                    <span class="contact-pseudo" style="font-weight:600; display:block;">@${c.pseudo}</span>
+                    <span class="contact-snippet" style="font-size:12px; color:var(--text-muted); display:block; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${snip}</span>
                 </div>`;
             div.onclick = () => chargerDiscussion(c._id, true);
             container.appendChild(div);
@@ -486,19 +510,19 @@ async function chargerDiscussion(userId, forcerScroll = false) {
     if (res && res.ok) {
         const msgs = await res.json();
         const container = document.getElementById("messages-history");
+        if(!container) return;
         
-        // --- NOUVEAU : Application de la couleur sauvegardée ---
-        const savedColor = localStorage.getItem(`chat_color_${userId}`) || '#dfb142'; // Gold par défaut
+        const savedColor = localStorage.getItem(`chat_color_${userId}`) || '#dfb142';
         appliquerCouleurChat(savedColor);
         const picker = document.getElementById('chat-color-picker');
         if (picker) picker.value = savedColor;
-        // --------------------------------------------------------
 
         document.querySelectorAll('.contact-item').forEach(el => el.classList.remove('active'));
         const activeItem = document.getElementById(`contact-${userId}`);
-        if (activeItem) {
+        const headerText = document.getElementById("chat-header-text");
+        if (activeItem && headerText) {
             activeItem.classList.add('active');
-            document.getElementById("chat-header-text").innerText = activeItem.querySelector('.contact-pseudo').innerText;
+            headerText.innerText = activeItem.querySelector('.contact-pseudo').innerText;
         }
 
         const etatActuel = JSON.stringify(msgs);
@@ -515,14 +539,13 @@ async function chargerDiscussion(userId, forcerScroll = false) {
                     else cocheHTML = `<span class="msg-status-tick tick-sent"><i class="fa-solid fa-check"></i></span>`;
                 }
 
-                let contenuHTML = m.texte;
+                let contenuHTML = m.texte || "";
                 if (m.mediaType === 'audio') {
                     contenuHTML = `<audio src="${API_URL}${m.mediaUrl}" controls class="chat-voice-player"></audio>`;
                 } else if (m.mediaUrl) {
                     contenuHTML = `<img src="${API_URL}${m.mediaUrl}" style="max-width: 200px; border-radius: 8px;"><br>${m.texte || ""}`;
                 }
 
-                // --- NOUVEAU : Bouton de suppression ---
                 const btnSupprimer = `<button class="btn-delete-msg" onclick="supprimerMessage('${m._id}')"><i class="fa-solid fa-trash"></i></button>`;
 
                 const div = document.createElement("div");
@@ -535,8 +558,10 @@ async function chargerDiscussion(userId, forcerScroll = false) {
             if (forcerScroll) container.scrollTop = container.scrollHeight;
         }
 
-        document.getElementById("chat-input-block").style.display = "flex";
-        document.getElementById("mobile-messages-layout").classList.add("chat-active");
+        const inputBlock = document.getElementById("chat-input-block");
+        const mobLayout = document.getElementById("mobile-messages-layout");
+        if(inputBlock) inputBlock.style.display = "flex";
+        if(mobLayout) mobLayout.classList.add("chat-active");
         
         if (socket && forcerScroll) socket.emit('markAsRead', userId);
     }
@@ -544,7 +569,7 @@ async function chargerDiscussion(userId, forcerScroll = false) {
 
 async function envoyerMessage() {
     const input = document.getElementById("message-text");
-    if (!input.value.trim() || !chatActifUserId) return;
+    if (!input || !input.value.trim() || !chatActifUserId) return;
 
     if (socket) socket.emit('stopTyping', chatActifUserId);
 
@@ -554,37 +579,38 @@ async function envoyerMessage() {
     });
     if (res && res.ok) { input.value = ""; chargerDiscussion(chatActifUserId, true); chargerMessagerie(); }
 }
-// --- GESTION DU PANNEAU DE PARAMÈTRES ---
+
+// --- GESTION DU PANNEAU DE PARAMÈTRES CHAT ---
 function toggleChatSettings() {
     const drawer = document.getElementById('chat-settings-drawer');
     if (!drawer) return;
     drawer.classList.toggle('hidden');
     
-    // Charger les paramètres actuels du contact actif
     if (!drawer.classList.contains('hidden') && chatActifUserId) {
         chargerParametresChat(chatActifUserId);
     }
 }
 
 function chargerParametresChat(userId) {
-    // Récupération depuis le LocalStorage (ou via ton API)
     const color = localStorage.getItem(`chat_color_${userId}`) || '#dfb142';
     const bg = localStorage.getItem(`chat_bg_${userId}`) || 'default';
     const isEphemere = localStorage.getItem(`chat_ephemere_${userId}`) === 'true';
     const isMuted = localStorage.getItem(`chat_mute_${userId}`) === 'true';
 
-    // Mise à jour de l'interface du drawer
-    document.getElementById('chat-color-picker').value = color;
-    document.getElementById('chat-bg-select').value = bg;
-    document.getElementById('toggle-ephemeral').checked = isEphemere;
-    document.getElementById('toggle-mute').checked = isMuted;
+    const colorPicker = document.getElementById('chat-color-picker');
+    const bgSelect = document.getElementById('chat-bg-select');
+    const toggleEph = document.getElementById('toggle-ephemeral');
+    const toggleMut = document.getElementById('toggle-mute');
 
-    // Application visuelle immédiate
+    if(colorPicker) colorPicker.value = color;
+    if(bgSelect) bgSelect.value = bg;
+    if(toggleEph) toggleEph.checked = isEphemere;
+    if(toggleMut) toggleMut.checked = isMuted;
+
     appliquerCouleurChat(color);
     appliquerFondChat(bg);
 }
 
-// --- FOND D'ÉCRAN PERSONNALISÉ ---
 function changerFondChat(typeFond) {
     if (!chatActifUserId) return;
     localStorage.setItem(`chat_bg_${chatActifUserId}`, typeFond);
@@ -595,42 +621,39 @@ function appliquerFondChat(typeFond) {
     const container = document.getElementById("messages-history");
     if (!container) return;
     
-    // Nettoyer les anciennes classes de fond
-    container.className = "messages-history-container"; 
+    container.className = "messages-history"; 
     if (typeFond !== 'default') {
         container.classList.add(`chat-bg-${typeFond}`);
     }
 }
 
-// --- MESSAGES ÉPHÉMÈRES ---
 function toggleEphemere(actif) {
     if (!chatActifUserId) return;
     localStorage.setItem(`chat_ephemere_${chatActifUserId}`, actif);
     afficherToast(actif ? "⏱️ Messages éphémères activés (24h)" : "⏱️ Messages éphémères désactivés");
-    // Tu pourras ici émettre un événement Socket.io pour prévenir l'autre utilisateur
     if (socket) socket.emit('toggleEphemere', { cibleId: chatActifUserId, actif });
 }
 
-// --- MODE SILENCE ---
-function toggleMute(actif) {
+// Renommé pour éviter le conflit avec le mute des Reels
+function toggleMuteChat(actif) {
     if (!chatActifUserId) return;
     localStorage.setItem(`chat_mute_${chatActifUserId}`, actif);
     afficherToast(actif ? "🔇 Discussion en mode silence" : "🔔 Notifications réactivées");
 }
 
-// --- VIDER L'HISTORIQUE ---
 async function viderHistoriqueChat() {
     if (!chatActifUserId) return;
-    if (!confirm("⚠️ Attention : Voulez-vous vraiment supprimer tous les messages de cette conversation pour vous et votre contact ?")) return;
+    if (!confirm("⚠️ Attention : Voulez-vous vraiment supprimer tous les messages de cette conversation ?")) return;
 
     const res = await fetchAPI(`/messages/clear/${chatActifUserId}`, { method: "DELETE" });
     if (res && res.ok) {
         document.getElementById("messages-history").innerHTML = "";
         memoireDiscussionState = "";
         afficherToast("Conversation vidée avec succès");
-        toggleChatSettings(); // Fermer le panneau
+        toggleChatSettings();
     }
 }
+
 function fermerChatMobile() {
     chatActifUserId = null; 
     document.getElementById("mobile-messages-layout").classList.remove("chat-active");
@@ -740,6 +763,7 @@ async function chargerNotifications() {
     if (res && res.ok) {
         const notifs = await res.json();
         const container = document.getElementById("notifications-container");
+        if(!container) return;
         container.innerHTML = notifs.length === 0 ? "<p>Aucune alerte.</p>" : "";
         notifs.forEach(n => {
             const div = document.createElement("div");
@@ -762,6 +786,7 @@ async function chargerStatuts() {
     if (!res || !res.ok) return;
     const statuts = await res.json();
     const listContainer = document.getElementById("contacts-statuses-container");
+    if(!listContainer) return;
     listContainer.innerHTML = "";
 
     let mapMembres = {};
@@ -826,6 +851,7 @@ async function publierStatut() {
 function demarrerVisionneuseStatut(statusArray) {
     let index = 0;
     const modal = document.getElementById('view-status-modal');
+    if(!modal) return;
     modal.style.display = 'flex';
 
     async function afficherIndex() {
@@ -840,14 +866,16 @@ function demarrerVisionneuseStatut(statusArray) {
 
         const body = document.getElementById('viewer-content-area');
         if (s.type === 'image') {
-            body.innerHTML = `<div style='text-align:center;'><img src="${API_URL}${s.mediaUrl}"><p style='color:white; margin-top:10px; font-size:14px;'>${s.text}</p></div>`;
+            body.innerHTML = `<div style='text-align:center;'><img src="${API_URL}${s.mediaUrl}" style="max-width:100%; max-height:70vh;"><p style='color:white; margin-top:10px; font-size:14px;'>${s.text || ""}</p></div>`;
         } else {
             body.innerHTML = `<div class="big-text-status">"${s.text}"</div>`;
         }
 
         const fillBar = document.getElementById('status-progress-bar');
-        fillBar.style.transition = 'none'; fillBar.style.width = '0%';
-        setTimeout(() => { fillBar.style.transition = 'width 5000ms linear'; fillBar.style.width = '100%'; }, 50);
+        if(fillBar) {
+            fillBar.style.transition = 'none'; fillBar.style.width = '0%';
+            setTimeout(() => { fillBar.style.transition = 'width 5000ms linear'; fillBar.style.width = '100%'; }, 50);
+        }
 
         clearInterval(statusTimerInterval);
         statusTimerInterval = setTimeout(() => { index++; afficherIndex(); }, 5000);
@@ -864,15 +892,14 @@ function fermerVisionneuseStatut() {
 // --- PERSONNALISATION DES COULEURS ---
 function changerCouleurChat(couleur) {
     if (!chatActifUserId) return;
-    // Sauvegarder la préférence pour cet utilisateur précis
     localStorage.setItem(`chat_color_${chatActifUserId}`, couleur);
     appliquerCouleurChat(couleur);
 }
 
 function appliquerCouleurChat(couleur) {
-    // Modifier la variable CSS dynamiquement
     document.documentElement.style.setProperty('--chat-theme-color', couleur);
 }
+
 // --- GESTION DE LA RECHERCHE MOBILE ---
 function ouvrirRechercheMobile() {
     document.getElementById("mobile-search-overlay").style.display = "flex";
@@ -889,11 +916,9 @@ function fermerRechercheMobile() {
 async function supprimerMessage(messageId) {
     if (!confirm("Voulez-vous vraiment supprimer ce message ?")) return;
     
-    // Appel à l'API backend pour supprimer le message
     const res = await fetchAPI(`/messages/${messageId}`, { method: "DELETE" });
     if (res && res.ok) {
         afficherToast("Message supprimé");
-        // On force le rechargement de la discussion pour faire disparaître le message
         chargerDiscussion(chatActifUserId, true); 
     }
 }
@@ -915,4 +940,269 @@ async function rechercherUtilisateursMobile() {
                 </div>`;
         });
     }
+}
+
+// ============================================================================
+// GESTION DES REELS (FLUX VIDÉO JO SOCIO)
+// ============================================================================
+function initialiserReelsObserver() {
+    const container = document.getElementById('reels-feed');
+    if (!container) return;
+
+    const options = { root: container, threshold: 0.6 };
+    const observer = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+            const video = entry.target.querySelector('.reel-video');
+            if (!video) return;
+            if (entry.isIntersecting) {
+                video.play().catch(err => {
+                    console.log("Lecture auto bloquée par le navigateur : attente d'interaction.");
+                });
+            } else {
+                video.pause();
+                video.currentTime = 0;
+            }
+        });
+    }, options);
+
+    document.querySelectorAll('.reel-item').forEach(item => observer.observe(item));
+}
+
+// Renommé en toggleMuteReel pour éviter le conflit avec toggleMuteChat
+function toggleMuteReel(btn) {
+    const reelItem = btn.closest('.reel-item');
+    const video = reelItem.querySelector('.reel-video');
+    const icon = btn.querySelector('i');
+
+    if (video.muted) {
+        video.muted = false;
+        icon.className = "fa-solid fa-volume-high";
+    } else {
+        video.muted = true;
+        icon.className = "fa-solid fa-volume-xmark";
+    }
+}
+
+function initialiserDoubleTapReels() {
+    const reels = document.querySelectorAll('.reel-item');
+    reels.forEach(reel => {
+        const video = reel.querySelector('.reel-video');
+        const videoId = reel.dataset.videoId;
+        let dernierClic = 0;
+
+        if(!video) return;
+        video.addEventListener('click', (e) => {
+            const tempsActuel = new Date().getTime();
+            const ecart = tempsActuel - dernierClic;
+
+            if (ecart < 300 && ecart > 0) {
+                e.preventDefault();
+                declencherDoubleTapLike(reel, videoId);
+                dernierClic = 0; 
+            } else {
+                dernierClic = tempsActuel;
+            }
+        });
+    });
+}
+
+function declencherDoubleTapLike(reel, videoId) {
+    const grosCoeur = reel.querySelector('.reel-big-heart');
+    const btnLike = reel.querySelector('.btn-like');
+    if(!btnLike) return;
+    const likeIcon = btnLike.querySelector('i');
+    const likeCountSpan = btnLike.querySelector('span');
+
+    if (grosCoeur) {
+        grosCoeur.classList.remove('animate');
+        void grosCoeur.offsetWidth; 
+        grosCoeur.classList.add('animate');
+    }
+
+    if (!btnLike.classList.contains('liked')) {
+        btnLike.classList.add('liked');
+        likeIcon.classList.remove('fa-regular');
+        likeIcon.classList.add('fa-solid');
+
+        let nbLikes = parseInt(likeCountSpan.innerText.replace(/\D/g, '')) || 0;
+        likeCountSpan.innerText = formatNombreLikes(nbLikes + 1);
+
+        if (typeof envoyerLikeApi === "function") {
+            envoyerLikeApi(videoId);
+        }
+    }
+}
+
+function formatNombreLikes(num) {
+    if (num >= 1000000) return (num / 1000000).toFixed(1).replace(/\.0$/, '') + ' M';
+    if (num >= 1000) return (num / 1000).toFixed(1).replace(/\.0$/, '') + ' K';
+    return num.toString();
+}
+
+async function envoyerLikeApi(videoId) {
+    try {
+        const token = localStorage.getItem("social_token");
+        await fetch(`${API_URL}/api/reels/${videoId}/like`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }
+        });
+    } catch (erreur) {
+        console.error("Erreur de synchronisation du like :", erreur);
+    }
+}
+
+// Fonctions additionnelles de Reels
+function likerVideo(videoId) {
+    const reel = document.querySelector(`.reel-item[data-video-id="${videoId}"]`);
+    if(reel) declencherDoubleTapLike(reel, videoId);
+}
+
+function ouvrirCommentaires(videoId) {
+    afficherToast("Ouverture des commentaires du Reel #" + videoId);
+}
+
+function partagerVideo(videoId) {
+    afficherToast("Lien du Reel #" + videoId + " copié dans le presse-papier !");
+}
+
+function envoyerMessageVideo(videoId) {
+    afficherToast("Reel #" + videoId + " prêt à être partagé en message privé.");
+}
+
+// ============================================================================
+// FILTRES ET RECHERCHE MESSAGERIE
+// ============================================================================
+function initialiserFiltresMessagerie() {
+    const chips = document.querySelectorAll('.msg-filter-chips-container .filter-chip');
+    chips.forEach(chip => {
+        chip.addEventListener('click', (e) => {
+            chips.forEach(c => c.classList.remove('active'));
+            const cible = e.currentTarget;
+            cible.classList.add('active');
+            const critere = cible.dataset.filter;
+            const searchInput = document.getElementById('msg-search-input');
+            filtrerListeDiscussions(critere, searchInput ? searchInput.value : "");
+        });
+    });
+}
+
+function initialiserRechercheMessagerie() {
+    const searchInput = document.getElementById('msg-search-input');
+    if (!searchInput) return;
+    searchInput.addEventListener('input', (e) => {
+        const terme = e.target.value.toLowerCase().trim();
+        const chipActif = document.querySelector('.filter-chip.active');
+        const critere = chipActif ? chipActif.dataset.filter : 'toutes';
+        filtrerListeDiscussions(critere, terme);
+    });
+}
+
+// Correction majeure : utilisation des sélecteurs CSS réels (.contact-pseudo et .contact-snippet)
+function filtrerListeDiscussions(critere, termeRecherche = "") {
+    const contacts = document.querySelectorAll('.contact-item');
+    contacts.forEach(contact => {
+        const nomEl = contact.querySelector('.contact-pseudo');
+        const msgEl = contact.querySelector('.contact-snippet');
+        const nom = (nomEl ? nomEl.innerText : "").toLowerCase();
+        const dernierMsg = (msgEl ? msgEl.innerText : "").toLowerCase();
+        
+        const estNonLu = contact.classList.contains('unread'); 
+        const estFavori = contact.classList.contains('favorite');
+        const estGroupe = contact.dataset.isGroup === "true";
+
+        const correspondRecherche = nom.includes(termeRecherche) || dernierMsg.includes(termeRecherche);
+
+        let correspondCritere = true;
+        if (critere === 'non-lues') correspondCritere = estNonLu;
+        if (critere === 'favoris') correspondCritere = estFavori;
+        if (critere === 'groupes') correspondCritere = estGroupe;
+
+        if (correspondRecherche && correspondCritere) {
+            contact.style.display = "flex";
+        } else {
+            contact.style.display = "none";
+        }
+    });
+}
+
+// --- ACTIONS ET PARAMÈTRES AVANCÉS JO SOCIO ---
+function ouvrirCameraStatut() {
+    ouvrirModaleCreationStatut();
+}
+
+function toggleModaleParametres() {
+    const modale = document.getElementById('josocio-settings-modal');
+    if (!modale) return;
+    if (modale.classList.contains('active')) {
+        modale.classList.remove('active');
+        document.body.style.overflow = "auto"; 
+    } else {
+        modale.classList.add('active');
+        document.body.style.overflow = "hidden"; 
+    }
+}
+
+function fermerModaleSiBackground(event) {
+    if (event.target.id === 'josocio-settings-modal') {
+        toggleModaleParametres();
+    }
+}
+
+document.addEventListener('keydown', (e) => {
+    if (e.key === "Escape") {
+        const modale = document.getElementById('josocio-settings-modal');
+        if (modale && modale.classList.contains('active')) {
+            toggleModaleParametres();
+        }
+    }
+});
+
+function ouvrirSection(section) {
+    switch(section) {
+        case 'compte': alert("Accès aux paramètres de sécurité et confidentialité."); break;
+        case 'chats': alert("Modification du fond d'écran et des thèmes."); break;
+        case 'notifs': alert("Gestion des sons et vibreur."); break;
+        case 'stockage': alert("Gestion du cache et téléchargements automatiques."); break;
+        case 'ia': alert("Configuration de l'Assistant IA Jo Socio."); break;
+        default: break;
+    }
+}
+
+function deconnecterJoSocio() {
+    if (confirm("Êtes-vous sûr de vouloir vous déconnecter de Jo Socio ?")) {
+        localStorage.removeItem("social_token");
+        sessionStorage.clear();
+        location.reload();
+    }
+}
+
+function rechercherDansChat() {
+    const terme = prompt("Entrez le mot ou la phrase à rechercher dans la discussion :");
+    if (!terme) return;
+    const bulles = document.querySelectorAll(".message-bubble");
+    let trouve = false;
+    bulles.forEach(b => {
+        if (b.innerText.toLowerCase().includes(terme.toLowerCase())) {
+            b.style.border = "2px solid var(--gold, #dfb142)";
+            if (!trouve) { b.scrollIntoView({ behavior: "smooth", block: "center" }); trouve = true; }
+            setTimeout(() => b.style.border = "none", 4000);
+        }
+    });
+    if (!trouve) afficherToast("Aucun message correspondant trouvé.");
+}
+
+function exporterDiscussion() {
+    if (!chatActifUserId) return afficherToast("Aucune discussion sélectionnée.");
+    const bulles = document.querySelectorAll(".message-bubble");
+    let texteExport = `--- Export Discussion Jo Socio (ID: ${chatActifUserId}) ---\n\n`;
+    bulles.forEach(b => {
+        const estMoi = b.classList.contains("sent") ? "Moi" : "Contact";
+        texteExport += `[${estMoi}] : ${b.innerText.replace("\n", " ")}\n`;
+    });
+    const blob = new Blob([texteExport], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = `discussion_${chatActifUserId}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
 }

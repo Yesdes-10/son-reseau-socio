@@ -595,3 +595,563 @@ input:checked + .slider:before { transform: translateX(20px); }
 .chat-bg-geometric { background-image: radial-gradient(#333 1px, transparent 1px); background-size: 20px 20px; }
 .chat-bg-stars { background: radial-gradient(ellipse at bottom, #1b2735 0%, #090a0f 100%); }
 .chat-bg-gradient { background: linear-gradient(135deg, #1f0036 0%, #000f26 100%); }
+/* --- Conteneur global avec aimantation au scroll --- */
+.reels-feed-container {
+    width: 100%;
+    /* Hauteur totale moins la hauteur de votre barre de navigation du bas (ex: 60px) */
+    height: calc(100vh - 60px); 
+    overflow-y: scroll;
+    scroll-snap-type: y mandatory; /* Secret du scroll Instagram */
+    scroll-behavior: smooth;
+    background-color: #000000;
+    position: relative;
+    /* Masquer la barre de défilement pour un look natif */
+    scrollbar-width: none; 
+}
+.reels-feed-container::-webkit-scrollbar {
+    display: none;
+}
+
+/* --- Carte vidéo individuelle --- */
+.reel-item {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    scroll-snap-align: start; /* Aimante le haut de la vidéo au haut de l'écran */
+    overflow: hidden;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    background: #111;
+}
+
+.reel-video {
+    width: 100%;
+    height: 100%;
+    object-fit: cover; /* Coupe légèrement les bords pour remplir tout l'écran sans déformer */
+}
+
+/* --- Dégradés pour rendre les textes blancs lisibles --- */
+.reel-gradient-overlay {
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: linear-gradient(180deg, rgba(0,0,0,0.4) 0%, rgba(0,0,0,0) 20%, rgba(0,0,0,0) 70%, rgba(0,0,0,0.6) 100%);
+    pointer-events: none;
+    z-index: 1;
+}
+
+/* --- En-tête (Auteur de la vidéo) --- */
+.reel-header {
+    position: absolute;
+    top: 20px;
+    left: 15px;
+    right: 15px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    z-index: 10;
+}
+.reel-user-info {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.reel-avatar {
+    width: 38px;
+    height: 38px;
+    border-radius: 50%;
+    border: 2px solid #dfb142; /* Rappel subtil de la couleur de Jo Socio */
+    object-fit: cover;
+}
+.reel-username {
+    color: #fff;
+    font-weight: 700;
+    font-size: 0.95rem;
+    text-shadow: 0 1px 3px rgba(0,0,0,0.5);
+}
+.reel-badge {
+    color: rgba(255,255,255,0.7);
+    font-size: 0.8rem;
+}
+.btn-reel-follow {
+    background: transparent;
+    border: 1px solid #fff;
+    color: #fff;
+    padding: 5px 14px;
+    border-radius: 20px;
+    font-weight: 600;
+    font-size: 0.85rem;
+    cursor: pointer;
+    backdrop-filter: blur(4px);
+}
+
+/* --- Barre d'actions inférieure (Likes, Commentaires...) --- */
+.reel-actions-bottom {
+    position: absolute;
+    bottom: 25px;
+    left: 15px;
+    right: 60px; /* Laisse de la place pour le bouton mute à droite */
+    display: flex;
+    align-items: center;
+    justify-content: space-around;
+    z-index: 10;
+}
+.reel-action-btn {
+    background: none;
+    border: none;
+    color: #fff;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 1.4rem;
+    cursor: pointer;
+    padding: 5px;
+    filter: drop-shadow(0 2px 5px rgba(0,0,0,0.5));
+}
+.reel-action-btn span {
+    font-size: 0.9rem;
+    font-weight: 600;
+}
+
+/* --- Bouton Mute --- */
+.reel-mute-btn {
+    position: absolute;
+    bottom: 25px;
+    right: 15px;
+    background: rgba(0,0,0,0.5);
+    border: none;
+    color: #fff;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    z-index: 10;
+    backdrop-filter: blur(4px);
+}
+/* --- Empêcher le zoom tactile au double-tap sur mobile --- */
+.reel-video {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    cursor: pointer;
+    touch-action: manipulation; /* Bloque le délai de 300ms du zoom natif iOS/Android */
+}
+
+/* --- Style du gros cœur central --- */
+.reel-big-heart {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%) scale(0);
+    color: #e74c3c; /* Rouge éclatant */
+    font-size: 7rem;
+    z-index: 25;
+    pointer-events: none; /* Laisse passer les clics au travers */
+    opacity: 0;
+    filter: drop-shadow(0 10px 25px rgba(0, 0, 0, 0.5));
+    transition: none;
+}
+
+/* --- Animation Keyframes --- */
+@keyframes doubleTapHeart {
+    0% {
+        transform: translate(-50%, -50%) scale(0);
+        opacity: 1;
+    }
+    15% {
+        transform: translate(-50%, -50%) scale(1.3);
+        opacity: 1;
+    }
+    30% {
+        transform: translate(-50%, -50%) scale(1);
+        opacity: 1;
+    }
+    70% {
+        transform: translate(-50%, -50%) scale(1.1);
+        opacity: 0.8;
+    }
+    100% {
+        transform: translate(-50%, -50%) scale(0.6) translateY(-40px);
+        opacity: 0;
+    }
+}
+
+.reel-big-heart.animate {
+    animation: doubleTapHeart 0.8s cubic-bezier(0.17, 0.89, 0.32, 1.49) forwards;
+}
+
+/* --- État "Liké" pour le bouton dans la barre du bas --- */
+.reel-action-btn.btn-like.liked i {
+    color: #e74c3c !important;
+    transform: scale(1.2);
+    transition: transform 0.2s cubic-bezier(0.17, 0.89, 0.32, 1.49);
+}
+.reel-action-btn.btn-like.liked i::before {
+    content: "\f004"; /* Code FontAwesome pour fa-solid fa-heart */
+}
+/* ==========================================================================
+   EN-TÊTE DE MESSAGERIE JO SOCIO (Style WhatsApp Dark Mode)
+   ========================================================================== */
+
+:root {
+    --bg-header-dark: #0b141a;        /* Fond noir profond */
+    --bg-search-bar: #202c33;         /* Gris sombre pour la barre de recherche */
+    --bg-chip-default: #202c33;       /* Fond des filtres inactifs */
+    --bg-chip-active: #0f3629;        /* Fond vert sombre (ou jaune #dfb142 pour Jo Socio) */
+    --text-chip-active: #25d366;      /* Texte du filtre actif */
+    --text-primary: #ffffff;
+    --text-secondary: #8696a0;
+    --border-chip: #2a3942;
+}
+
+/* --- Conteneur principal de l'en-tête --- */
+.josocio-msg-header {
+    background-color: var(--bg-header-dark);
+    padding: 12px 16px 8px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+}
+
+/* --- Ligne 1 : Titre et Actions --- */
+.msg-header-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.msg-app-title {
+    color: var(--text-primary);
+    font-size: 1.55rem;
+    font-weight: 700;
+    letter-spacing: -0.5px;
+    margin: 0;
+}
+
+.msg-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+}
+
+.header-icon-btn {
+    background: transparent;
+    border: none;
+    color: var(--text-primary);
+    font-size: 1.25rem;
+    cursor: pointer;
+    padding: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: opacity 0.2s ease;
+}
+
+.header-icon-btn:hover,
+.header-icon-btn:active {
+    opacity: 0.7;
+}
+
+/* --- Ligne 2 : Barre de recherche --- */
+.msg-search-container {
+    width: 100%;
+}
+
+.msg-search-bar {
+    background-color: var(--bg-search-bar);
+    border-radius: 24px; /* Effet pilule parfaite */
+    display: flex;
+    align-items: center;
+    padding: 8px 16px;
+    gap: 12px;
+    transition: background-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.msg-search-bar:focus-within {
+    background-color: #2a3942;
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.1);
+}
+
+.search-icon {
+    color: var(--text-secondary);
+    font-size: 0.95rem;
+}
+
+#msg-search-input {
+    background: transparent;
+    border: none;
+    outline: none;
+    color: var(--text-primary);
+    font-size: 0.95rem;
+    width: 100%;
+}
+
+#msg-search-input::placeholder {
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+}
+
+/* --- Ligne 3 : Pilules de filtrage (Chips) --- */
+.msg-filter-chips-container {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    overflow-x: auto;
+    white-space: nowrap;
+    padding-bottom: 4px;
+    
+    /* Masquer la barre de défilement pour un toucher natif */
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+}
+
+.msg-filter-chips-container::-webkit-scrollbar {
+    display: none;
+}
+
+.filter-chip {
+    background-color: var(--bg-chip-default);
+    color: var(--text-secondary);
+    border: 1px solid transparent;
+    padding: 6px 14px;
+    border-radius: 20px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    transition: all 0.2s ease;
+    user-select: none;
+    flex-shrink: 0;
+}
+
+/* État actif du filtre (Style Vert WhatsApp, ou adaptabilité Jo Socio) */
+.filter-chip.active {
+    background-color: var(--bg-chip-active);
+    color: var(--text-chip-active);
+    border-color: rgba(37, 211, 102, 0.2);
+    /* Note : Si vous préférez le jaune de Jo Socio (#dfb142), remplacez :
+       background-color: rgba(223, 177, 66, 0.15);
+       color: #dfb142;
+       border-color: rgba(223, 177, 66, 0.3); */
+}
+
+/* Badge numérique à l'intérieur du chip */
+.chip-badge {
+    background-color: rgba(255, 255, 255, 0.1);
+    color: var(--text-primary);
+    font-size: 0.75rem;
+    padding: 1px 6px;
+    border-radius: 10px;
+    font-weight: 700;
+}
+
+.filter-chip.active .chip-badge {
+    background-color: var(--text-chip-active);
+    color: #000000;
+}
+/* --- 1. Style et Animation de la nouvelle icône Engrenage --- */
+.btn-settings-open i {
+    transition: transform 0.4s cubic-bezier(0.17, 0.89, 0.32, 1.49);
+}
+.btn-settings-open:hover i {
+    transform: rotate(90deg); /* L'engrenage tourne doucement au survol / clic */
+    color: #dfb142; /* Rappel subtil de la couleur de votre marque */
+}
+
+/* --- 2. Overlay (Fond sombre en arrière-plan) --- */
+.settings-modal-overlay {
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background-color: rgba(0, 0, 0, 0.75);
+    backdrop-filter: blur(5px);
+    z-index: 1000;
+    display: flex;
+    justify-content: center;
+    align-items: flex-end; /* Sur mobile, la modale monte par le bas (Bottom Sheet) */
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s ease;
+}
+
+.settings-modal-overlay.active {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+/* --- 3. Contenu de la modale --- */
+.settings-modal-content {
+    background-color: #111b21; /* Noir intense WhatsApp / Jo Socio */
+    width: 100%;
+    max-width: 500px;
+    max-height: 85vh;
+    border-radius: 20px 20px 0 0;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    transform: translateY(100%);
+    transition: transform 0.3s cubic-bezier(0.17, 0.89, 0.32, 1.2);
+}
+
+.settings-modal-overlay.active .settings-modal-content {
+    transform: translateY(0);
+}
+
+/* Sur écran de PC, on centre la boîte et on arrondit tous les angles */
+@media (min-width: 600px) {
+    .settings-modal-overlay {
+        align-items: center;
+    }
+    .settings-modal-content {
+        border-radius: 16px;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        box-shadow: 0 20px 40px rgba(0,0,0,0.6);
+    }
+}
+
+/* --- 4. En-tête de la modale --- */
+.settings-modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 18px 20px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+.settings-modal-header h2 {
+    color: #fff;
+    font-size: 1.25rem;
+    margin: 0;
+    font-weight: 700;
+}
+.btn-close-modal {
+    background: transparent;
+    border: none;
+    color: #8696a0;
+    font-size: 1.4rem;
+    cursor: pointer;
+    padding: 4px;
+}
+
+/* --- 5. Carte Profil Rapide --- */
+.settings-profile-card {
+    display: flex;
+    align-items: center;
+    padding: 16px 20px;
+    background-color: #202c33;
+    margin: 15px 15px 5px 15px;
+    border-radius: 12px;
+    gap: 15px;
+}
+.profile-card-img {
+    width: 54px;
+    height: 54px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 2px solid #dfb142;
+}
+.profile-card-info {
+    flex-grow: 1;
+    display: flex;
+    flex-direction: column;
+}
+.profile-name {
+    color: #fff;
+    font-weight: 700;
+    font-size: 1.05rem;
+}
+.profile-status {
+    color: #8696a0;
+    font-size: 0.85rem;
+    margin-top: 2px;
+}
+.btn-edit-profile {
+    background: transparent;
+    border: none;
+    color: #dfb142;
+    font-size: 1.2rem;
+    cursor: pointer;
+}
+
+/* --- 6. Liste des options --- */
+.settings-options-list {
+    padding: 10px 0;
+    overflow-y: auto;
+}
+.settings-item {
+    display: flex;
+    align-items: center;
+    padding: 14px 20px;
+    gap: 16px;
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+}
+.settings-item:hover {
+    background-color: rgba(255, 255, 255, 0.05);
+}
+.settings-icon-wrapper {
+    width: 38px;
+    height: 38px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.1rem;
+    color: #fff;
+    flex-shrink: 0;
+}
+/* Couleurs professionnelles par catégorie */
+.settings-icon-wrapper.blue { background-color: #3498db; }
+.settings-icon-wrapper.green { background-color: #2ecc71; }
+.settings-icon-wrapper.orange { background-color: #e67e22; }
+.settings-icon-wrapper.purple { background-color: #9b59b6; }
+.settings-icon-wrapper.gold { background-color: #dfb142; }
+.settings-icon-wrapper.red { background-color: rgba(231, 76, 60, 0.2); color: #e74c3c; }
+
+.settings-item-text {
+    display: flex;
+    flex-direction: column;
+    flex-grow: 1;
+}
+.settings-title {
+    color: #fff;
+    font-weight: 600;
+    font-size: 0.95rem;
+}
+.settings-subtitle {
+    color: #8696a0;
+    font-size: 0.78rem;
+    margin-top: 2px;
+    line-height: 1.3;
+}
+.settings-arrow {
+    color: #8696a0;
+    font-size: 0.8rem;
+}
+
+.settings-divider {
+    height: 1px;
+    background-color: rgba(255, 255, 255, 0.05);
+    margin: 8px 20px;
+}
+.text-red {
+    color: #e74c3c !important;
+}
+
+/* --- 7. Pied de modale --- */
+.settings-footer {
+    text-align: center;
+    padding: 12px;
+    border-top: 1px solid rgba(255, 255, 255, 0.05);
+    color: #54656f;
+    font-size: 0.75rem;
+    font-weight: 600;
+}
