@@ -71,8 +71,6 @@ const initDB = async () => {
         console.error("⚠️ [Erreur DB] Lecture impossible :", err);
     }
 };
-initDB();
-
 const saveDB = async () => {
     try {
         await fs.writeFile(DATA_FILE, JSON.stringify(db, null, 2), 'utf8');
@@ -80,6 +78,7 @@ const saveDB = async () => {
         console.error("❌ [Erreur DB] Écriture impossible :", err);
     }
 };
+initDB();
 
 // ============================================================================
 // 3. MIDDLEWARES & STORAGE MULTER
