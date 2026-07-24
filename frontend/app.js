@@ -3,7 +3,11 @@ const PAR_DEFAUT_AVATAR = "https://www.w3schools.com/howto/img_avatar.png";
 
 let fichierImageSelectionne = null; 
 let fichierStatutSelectionne = null;
-let chatActifUserId = null; 
+
+// Variables Chat & Conversations
+let chatActifConvId = null; 
+let chatActifDestinataireId = null;
+
 let cropperInstance = null;
 let dernierIdNotification = null;
 let memoireDiscussionState = ""; 
@@ -93,9 +97,8 @@ function initialiserWebSockets(token) {
     socket = io(API_URL, { auth: { token } });
 
     socket.on('newMessage', (msg) => {
-        if (chatActifUserId === msg.fromId && document.getElementById('messages-section').style.display === 'block') {
-            chargerDiscussion(chatActifUserId, true);
-            socket.emit('markAsRead', msg.fromId);
+        if (chatActifConvId === msg.conversationId && document.getElementById('messages-section').style.display === 'block') {
+            chargerDiscussion(chatActifConvId, msg.fromId, null, true);
         } else {
             chargerMessagerie();
             actualiserBadgeNotifications(false);
@@ -103,33 +106,55 @@ function initialiserWebSockets(token) {
         }
     });
 
-    socket.on('userTyping', (userId) => {
-        if (chatActifUserId === userId) {
-            document.getElementById('typing-indicator').style.display = 'block';
+    socket.on('userTyping', (data) => {
+        if (chatActifConvId === data.conversationId) {
+            const ind = document.getElementById('typing-indicator');
+            if(ind) {
+                ind.style.display = 'block';
+                ind.innerText = `@${data.pseudo} ${data.action}`;
+            }
             const hist = document.getElementById("messages-history");
             if (hist) hist.scrollTop = hist.scrollHeight;
         }
     });
 
-    socket.on('userStoppedTyping', (userId) => {
-        if (chatActifUserId === userId) {
-            document.getElementById('typing-indicator').style.display = 'none';
+    socket.on('userStoppedTyping', (data) => {
+        if (chatActifConvId === data.conversationId) {
+            const ind = document.getElementById('typing-indicator');
+            if(ind) ind.style.display = 'none';
         }
     });
 
-    socket.on('messagesReadBy', (userId) => {
-        if (chatActifUserId === userId) {
-            chargerDiscussion(userId, false); 
+    socket.on('messagesRead', (data) => {
+        if (chatActifConvId === data.conversationId) {
+            chargerDiscussion(chatActifConvId, chatActifDestinataireId, null, false); 
+        }
+    });
+
+    // Rendre la suppression de message dynamique
+    socket.on('messageDeleted', (data) => {
+        if (chatActifConvId === data.conversationId) {
+            chargerDiscussion(chatActifConvId, chatActifDestinataireId, null, false);
+        }
+    });
+
+    // Synchroniser en direct le basculement du mode éphémère
+    socket.on('ephemereToggled', (data) => {
+        if (chatActifConvId === data.conversationId) {
+            localStorage.setItem(`chat_ephemere_${chatActifConvId}`, data.actif);
+            const check = document.getElementById('toggle-ephemeral');
+            if (check) check.checked = data.actif;
+            afficherToast(data.actif ? "⏱️ Le mode éphémère a été activé" : "⏱️ Messages éphémères désactivés");
         }
     });
 }
 
 function gererIndicateurDeFrappe() {
-    if (!chatActifUserId || !socket) return;
-    socket.emit('typing', chatActifUserId);
+    if (!chatActifConvId || !socket) return;
+    socket.emit('typing', { conversationId: chatActifConvId, isAudio: false });
     clearTimeout(typingTimeout);
     typingTimeout = setTimeout(() => {
-        socket.emit('stopTyping', chatActifUserId);
+        socket.emit('stopTyping', chatActifConvId);
     }, 1500); 
 }
 
@@ -144,8 +169,10 @@ function naviguerVers(section, targetId = null) {
     document.getElementById('notifications-section').style.display = "none";
 
     if (section === 'messages') {
-        document.getElementById('mobile-messages-layout').classList.remove('chat-active');
-        chatActifUserId = null;
+        const layout = document.getElementById('mobile-messages-layout');
+        if(layout) layout.classList.remove('chat-active');
+        chatActifConvId = null;
+        chatActifDestinataireId = null;
     }
 
     const activeDesk = document.getElementById(`nav-${section}`);
@@ -309,13 +336,17 @@ async function modifierMonPseudo() {
     });
     if (res && res.ok) {
         afficherToast("Pseudo modifié !");
+        document.getElementById('input-nouveau-pseudo').value = '';
         mettreAjourAvatarsEtInfosEnCochiffre();
         chargerProfil("me"); 
+    } else {
+        const err = await res.json();
+        afficherToast(err.erreur || "Erreur de modification");
     }
 }
 
 async function supprimerMonCompte() {
-    if (!confirm("Supprimer définitivement votre compte ?")) return;
+    if (!confirm("Supprimer définitivement votre compte et toutes vos données ?")) return;
     const res = await fetchAPI("/users/me", { method: 'DELETE' });
     if (res && res.ok) deconnecter();
 }
@@ -371,7 +402,10 @@ async function publier() {
 async function chargerFeed() {
     const res = await fetchAPI("/feed");
     if (!res || !res.ok) return;
-    const posts = await res.json();
+    
+    const data = await res.json();
+    const posts = data.posts || data || []; 
+    
     const container = document.getElementById("feed-container");
     if(!container) return;
     container.innerHTML = posts.length === 0 ? "<p style='color:var(--text-muted);'>Aucun post récent.</p>" : "";
@@ -394,7 +428,7 @@ function creerElementPost(post) {
     let cmts = "";
     if (post.commentaires) {
         post.commentaires.forEach(c => {
-            cmts += `<div class="comment"><strong>@${c.auteur}</strong> : ${c.texte}</div>`;
+            cmts += `<div class="comment"><strong>@${c.auteurPseudo || c.auteur}</strong> : ${c.texte}</div>`;
         });
     }
 
@@ -450,7 +484,7 @@ async function rechercherUtilisateurs() {
     const input = document.getElementById("search-username");
     const q = input ? input.value.trim() : "";
     if (!q) return;
-    const res = await fetchAPI(`/users/search?q=${q}`);
+    const res = await fetchAPI(`/users/search?q=${encodeURIComponent(q)}`);
     const users = await res.json();
     const container = document.getElementById("search-results");
     if(!container) return;
@@ -464,6 +498,25 @@ async function rechercherUtilisateurs() {
     });
 }
 
+async function rechercherUtilisateursMobile() {
+    const query = document.getElementById("mob-search-input").value.trim();
+    const container = document.getElementById("mob-search-results-container");
+    if (!query) { container.innerHTML = ""; return; }
+
+    const res = await fetchAPI(`/users/search?q=${encodeURIComponent(query)}`);
+    if (res && res.ok) {
+        const users = await res.json();
+        container.innerHTML = users.length === 0 ? "<p style='color:gray; font-size:12px;'>Aucun membre trouvé.</p>" : "";
+        users.forEach(u => {
+            container.innerHTML += `
+                <div class="user-result" style="margin-bottom: 8px;">
+                    <span>@${u.pseudo}</span>
+                    <button class="btn-primary" style="padding: 4px 10px; font-size: 11px;" onclick="suivreUtilisateur('${u._id}'); fermerRechercheMobile();">Suivre</button>
+                </div>`;
+        });
+    }
+}
+
 async function suivreUtilisateur(userId) {
     const res = await fetchAPI(`/users/${userId}/follow`, { method: "POST" });
     if(res && res.ok) { afficherToast("Abonnement activé !"); chargerProfil(userId); }
@@ -475,22 +528,24 @@ async function desuivreUtilisateur(userId) {
 }
 
 // --- MESSAGERIE EXCELLENCE UNIFIÉE ---
-async function chargerMessagerie(forceUserChatId = null) {
+async function chargerMessagerie(forceTargetUserId = null) {
     chargerStatuts(); 
-    const res = await fetchAPI("/messages/contacts");
+    const res = await fetchAPI("/conversations");
     if (res && res.ok) {
-        const contacts = await res.json();
+        const conversations = await res.json();
         const container = document.getElementById("contacts-container");
         if(!container) return;
         container.innerHTML = "";
 
-        contacts.forEach(c => {
-            const av = c.avatarUrl ? `${API_URL}${c.avatarUrl}` : PAR_DEFAUT_AVATAR;
-            let snip = c.dernierMessage ? (c.dernierMessage.length > 20 ? c.dernierMessage.substring(0,20)+"..." : c.dernierMessage) : "<span class='snippet-vide'>Nouvelle discussion</span>";
+        conversations.forEach(c => {
+            const contact = c.displayProfiles && c.displayProfiles.length > 0 ? c.displayProfiles[0] : { pseudo: "Groupe", avatarUrl: null };
+            const av = contact.avatarUrl ? `${API_URL}${contact.avatarUrl}` : PAR_DEFAUT_AVATAR;
+            
+            let snip = c.lastMessage ? (c.lastMessage.texte.length > 20 ? c.lastMessage.texte.substring(0,20)+"..." : c.lastMessage.texte) : "<span class='snippet-vide'>Nouvelle discussion</span>";
             
             const div = document.createElement("div");
             div.className = "contact-item";
-            div.id = `contact-${c._id}`;
+            div.id = `conv-${c._id}`;
             div.innerHTML = `
                 <img src="${av}" class="avatar-round-mini" style="width:38px; height:38px; flex-shrink:0;">
                 <div class="contact-item-meta" style="overflow:hidden;">
@@ -500,13 +555,29 @@ async function chargerMessagerie(forceUserChatId = null) {
             div.onclick = () => chargerDiscussion(c._id, true);
             container.appendChild(div);
         });
-        if (forceUserChatId) chargerDiscussion(forceUserChatId, true);
+
+        if (forceTargetUserId) {
+            ouvrirOuCreerConversation(forceTargetUserId);
+        }
     }
 }
 
-async function chargerDiscussion(userId, forcerScroll = false) {
-    chatActifUserId = userId;
-    const res = await fetchAPI(`/messages/${userId}`);
+async function ouvrirOuCreerConversation(targetUserId) {
+    const res = await fetchAPI("/conversations", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ participantIds: [targetUserId], isGroup: false })
+    });
+    if (res && res.ok) {
+        const conv = await res.json();
+        chargerDiscussion(conv._id, targetUserId, "Discussion", true);
+    }
+}
+
+async function chargerDiscussion(convId, destinataireId, nomDestinataire, forcerScroll = false) {
+    chatActifConvId = convId;
+    chatActifDestinataireId = destinataireId;
+
+    const res = await fetchAPI(`/conversations/${convId}/messages`);
     if (res && res.ok) {
         const msgs = await res.json();
         const container = document.getElementById("messages-history");
@@ -530,13 +601,18 @@ async function chargerDiscussion(userId, forcerScroll = false) {
             container.innerHTML = "";
             msgs.forEach(m => {
                 const heure = new Date(m.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                const estMoi = m.fromId !== userId;
+                
+                let monId = null;
+                const tokenStr = localStorage.getItem("social_token");
+                if(tokenStr) monId = JSON.parse(atob(tokenStr.split('.')[1])).id;
+                
+                const estMoi = m.fromId === monId;
                 
                 let cocheHTML = "";
                 if (estMoi) {
-                    if (m.status === 'read') cocheHTML = `<span class="msg-status-tick tick-read"><i class="fa-solid fa-check-double"></i></span>`;
-                    else if (m.status === 'delivered') cocheHTML = `<span class="msg-status-tick tick-delivered"><i class="fa-solid fa-check-double"></i></span>`;
-                    else cocheHTML = `<span class="msg-status-tick tick-sent"><i class="fa-solid fa-check"></i></span>`;
+                    const estLu = m.readBy && m.readBy.some(r => r.userId !== monId);
+                    cocheHTML = estLu ? `<span class="msg-status-tick tick-read"><i class="fa-solid fa-check-double"></i></span>` 
+                                      : `<span class="msg-status-tick tick-sent"><i class="fa-solid fa-check"></i></span>`;
                 }
 
                 let contenuHTML = m.texte || "";
@@ -553,7 +629,6 @@ async function chargerDiscussion(userId, forcerScroll = false) {
                 div.innerHTML = `${contenuHTML} <span class="msg-timestamp">${heure} ${cocheHTML}</span> ${btnSupprimer}`;
                 container.appendChild(div);
             });
-
             memoireDiscussionState = etatActuel;
             if (forcerScroll) container.scrollTop = container.scrollHeight;
         }
@@ -563,7 +638,7 @@ async function chargerDiscussion(userId, forcerScroll = false) {
         if(inputBlock) inputBlock.style.display = "flex";
         if(mobLayout) mobLayout.classList.add("chat-active");
         
-        if (socket && forcerScroll) socket.emit('markAsRead', userId);
+        await fetchAPI(`/conversations/${convId}/read`, { method: "POST" });
     }
 }
 
@@ -571,13 +646,17 @@ async function envoyerMessage() {
     const input = document.getElementById("message-text");
     if (!input || !input.value.trim() || !chatActifUserId) return;
 
-    if (socket) socket.emit('stopTyping', chatActifUserId);
+    if (socket) socket.emit('stopTyping', chatActifConvId);
 
-    const res = await fetchAPI(`/messages/${chatActifUserId}`, {
+    const res = await fetchAPI(`/conversations/${chatActifConvId}/messages`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ texte: input.value })
     });
-    if (res && res.ok) { input.value = ""; chargerDiscussion(chatActifUserId, true); chargerMessagerie(); }
+    if (res && res.ok) { 
+        input.value = ""; 
+        chargerDiscussion(chatActifConvId, chatActifDestinataireId, null, true); 
+        chargerMessagerie(); 
+    }
 }
 
 // --- GESTION DU PANNEAU DE PARAMÈTRES CHAT ---
@@ -612,8 +691,8 @@ function chargerParametresChat(userId) {
 }
 
 function changerFondChat(typeFond) {
-    if (!chatActifUserId) return;
-    localStorage.setItem(`chat_bg_${chatActifUserId}`, typeFond);
+    if (!chatActifConvId) return;
+    localStorage.setItem(`chat_bg_${chatActifConvId}`, typeFond);
     appliquerFondChat(typeFond);
 }
 
@@ -628,8 +707,8 @@ function appliquerFondChat(typeFond) {
 }
 
 function toggleEphemere(actif) {
-    if (!chatActifUserId) return;
-    localStorage.setItem(`chat_ephemere_${chatActifUserId}`, actif);
+    if (!chatActifConvId) return;
+    localStorage.setItem(`chat_ephemere_${chatActifConvId}`, actif);
     afficherToast(actif ? "⏱️ Messages éphémères activés (24h)" : "⏱️ Messages éphémères désactivés");
     if (socket) socket.emit('toggleEphemere', { cibleId: chatActifUserId, actif });
 }
@@ -655,7 +734,8 @@ async function viderHistoriqueChat() {
 }
 
 function fermerChatMobile() {
-    chatActifUserId = null; 
+    chatActifConvId = null; 
+    chatActifDestinataireId = null;
     document.getElementById("mobile-messages-layout").classList.remove("chat-active");
 }
 
@@ -695,14 +775,14 @@ function arreterEtEnvoyerVocal(e) {
         mediaRecorder.onstop = async () => {
             fermerIndicateurVocal();
             const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
-            if (audioBlob.size > 0 && chatActifUserId) {
+            if (audioBlob.size > 0 && chatActifConvId) {
                 const formData = new FormData();
                 formData.append("media", audioBlob, "vocal.webm");
-                const res = await fetchAPI(`/messages/${chatActifUserId}`, {
+                const res = await fetchAPI(`/conversations/${chatActifConvId}/messages`, {
                     method: "POST", body: formData
                 });
                 if (res && res.ok) {
-                    chargerDiscussion(chatActifUserId, true);
+                    chargerDiscussion(chatActifConvId, chatActifDestinataireId, null, true);
                     chargerMessagerie();
                 }
             }
@@ -858,7 +938,7 @@ function demarrerVisionneuseStatut(statusArray) {
         if (index >= statusArray.length) { fermerVisionneuseStatut(); return; }
         const s = statusArray[index];
         
-        await fetchAPI(`/statuses/${s._id}/read`, { method: "POST" });
+        await fetchAPI(`/statuses/${s._id}/view`, { method: "POST" });
 
         document.getElementById('viewer-author-name').innerText = `@${s.author}`;
         document.getElementById('viewer-author-avatar').src = s.avatarUrl ? `${API_URL}${s.avatarUrl}` : PAR_DEFAUT_AVATAR;
